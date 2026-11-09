@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>용용아 뭐입지?</title>
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"Noto Sans KR",sans-serif;background:#111;color:#eee;min-height:100vh}
+button{font-family:inherit;cursor:pointer}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:#1b1b1b;position:sticky;top:0;z-index:5}
+header h1{font-size:18px}
+.btn{background:#2a2a2a;border:1px solid #444;color:#eee;border-radius:8px;padding:7px 12px;font-size:14px}
+.main{display:flex;gap:10px;padding:10px}
+.left{width:96px;flex-shrink:0;position:sticky;top:62px;align-self:flex-start;background:#1b1b1b;border-radius:12px;padding:12px 8px;text-align:center}
+.left input{width:100%;font-size:30px;font-weight:700;text-align:center;background:#000;color:#fff;border:1px solid #333;border-radius:8px;padding:8px 0}
+.unit{font-size:13px;color:#888;margin:4px 0 10px}
+.pm{display:block;width:100%;font-size:28px;font-weight:700;padding:10px 0;margin-bottom:8px;border:none;border-radius:10px;color:#fff}
+.plus{background:#c0392b}.minus{background:#2471a3}
+.reset{font-size:12px;width:100%;padding:6px 0}
+.right{flex:1;min-width:0}
+.rangeTitle{font-size:15px;color:#f5b041;margin:2px 0 8px;font-weight:700}
+.photo{position:relative;margin-bottom:10px}
+.photo img{width:100%;border-radius:10px;display:block}
+.no{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.7);border-radius:12px;padding:2px 9px;font-size:13px}
+.empty{color:#777;padding:40px 10px;text-align:center;line-height:1.7}
+#viewer{display:none;position:fixed;inset:0;background:#000;z-index:20;align-items:center;justify-content:center}
+#viewer img{max-width:100%;max-height:100%}
+#settings{display:none;position:fixed;inset:0;background:#111;z-index:10;overflow-y:auto;padding:0 0 40px}
+.sec{background:#1b1b1b;margin:10px;border-radius:12px;padding:12px}
+.sec h2{font-size:15px;margin-bottom:10px}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.row input{width:70px;font-size:16px;padding:7px;background:#000;color:#fff;border:1px solid #444;border-radius:8px;text-align:center}
+.rangeBox{border:1px solid #333;border-radius:10px;padding:10px;margin-top:10px}
+.rangeHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.rangeHead b{color:#f5b041;font-size:16px}
+.item{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.item img{width:60px;height:60px;object-fit:cover;border-radius:6px}
+.item span{flex:1;color:#999;font-size:13px}
+.item button{width:38px;height:38px;font-size:16px}
+.del{background:#5a1f1f;border-color:#7a2a2a}
+.add{background:#1e4d2b;border-color:#2c6e3f;width:100%;margin-top:4px;padding:9px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>용용아 뭐입지?</h1>
+  <button class="btn" onclick="openSettings()">⚙ 설정</button>
+</header>
+
+<div class="main">
+  <div class="left">
+    <input type="number" id="temp" inputmode="decimal">
+    <div class="unit">℃</div>
+    <button class="pm plus" onclick="step(1)">＋</button>
+    <button class="pm minus" onclick="step(-1)">−</button>
+    <button class="btn reset" onclick="resetTemp()">기본온도</button>
+  </div>
+  <div class="right" id="photos"></div>
+</div>
+
+<div id="viewer" onclick="this.style.display='none'"><img id="viewImg"></div>
+
+<div id="settings">
+  <header>
+    <h1>⚙ 설정</h1>
+    <button class="btn" onclick="closeSettings()">완료</button>
+  </header>
+
+  <div class="sec">
+    <h2>기본 온도 (앱 켜면 처음 보이는 온도)</h2>
+    <div class="row">
+      <input type="number" id="defTemp" inputmode="decimal"> ℃
+      <button class="btn" onclick="saveDefault()">저장</button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>온도 구간 추가</h2>
+    <div class="row">
+      <input type="number" id="newMin" inputmode="decimal" placeholder="5"> ~
+      <input type="number" id="newMax" inputmode="decimal" placeholder="10"> ℃
+      <button class="btn" onclick="addRange()">추가</button>
+    </div>
+    <div id="rangeList"></div>
+  </div>
+
+  <div class="sec">
+    <h2>백업</h2>
+    <div class="row">
+      <button class="btn" onclick="exportData()">백업 파일 저장</button>
+      <button class="btn" onclick="document.getElementById('importFile').click()">백업 불러오기</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="photoFile" accept="image/*" multiple style="display:none">
+<input type="file" id="importFile" accept=".json" style="display:none">
+
+<script>
+let db, data = { defaultTemp: 10, ranges: [] };
+let addTarget = null;
+const tIn = document.getElementById('temp');
+
+function openDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('bikeClothes', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('s');
+    r.onsuccess = () => { db = r.result; res(); };
+    r.onerror = () => rej(r.error);
+  });
+}
+function load() {
+  return new Promise(res => {
+    const r = db.transaction('s').objectStore('s').get('data');
+    r.onsuccess = () => { if (r.result) data = r.result; res(); };
+    r.onerror = () => res();
+  });
+}
+function save() {
+  return new Promise(res => {
+    const t = db.transaction('s', 'readwrite');
+    t.objectStore('s').put(data, 'data');
+    t.oncomplete = res;
+    t.onerror = () => { alert('저장 실패 (저장공간 부족일 수 있습니다)'); res(); };
+  });
+}
+
+// 사진 줄이기 (용량 절약)
+function resize(file) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const m = 1000;
+      let w = img.width, h = img.height;
+      if (w > m || h > m) { const s = m / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = rej;
+    img.src = url;
+  });
+}
+
+// ===== 메인 화면 =====
+function step(d) {
+  const v = parseFloat(tIn.value);
+  tIn.value = (isNaN(v) ? data.defaultTemp : v) + d;
+  show();
+}
+function resetTemp() { tIn.value = data.defaultTemp; show(); }
+tIn.addEventListener('input', show);
+
+function show() {
+  const box = document.getElementById('photos');
+  const t = parseFloat(tIn.value);
+  box.innerHTML = '';
+  if (isNaN(t)) { box.innerHTML = '<div class="empty">온도를 입력하세요</div>'; return; }
+  const hits = data.ranges.filter(r => t >= r.min && t <= r.max);
+  if (!hits.length) {
+    box.innerHTML = `<div class="empty">${t}℃ 에 맞는 구간이 없습니다.<br>⚙ 설정에서 구간을 추가하세요.</div>`;
+    return;
+  }
+  hits.forEach(r => {
+    const title = document.createElement('div');
+    title.className = 'rangeTitle';
+    title.textContent = `${r.min} ~ ${r.max}℃`;
+    box.appendChild(title);
+    if (!r.photos.length) {
+      const e = document.createElement('div');
+      e.className = 'empty'; e.textContent = '등록된 사진이 없습니다';
+      box.appendChild(e);
+    }
+    r.photos.forEach((p, i) => {
+      const d = document.createElement('div');
+      d.className = 'photo';
+      d.innerHTML = `<img src="${p.src}"><div class="no">${i + 1}</div>`;
+      d.onclick = () => {
+        document.getElementById('viewImg').src = p.src;
+        document.getElementById('viewer').style.display = 'flex';
+      };
+      box.appendChild(d);
+    });
+  });
+}
+
+// ===== 설정 =====
+function openSettings() {
+  document.getElementById('defTemp').value = data.defaultTemp;
+  renderSettings();
+  document.getElementById('settings').style.display = 'block';
+}
+function closeSettings() {
+  document.getElementById('settings').style.display = 'none';
+  show();
+}
+async function saveDefault() {
+  const v = parseFloat(document.getElementById('defTemp').value);
+  if (isNaN(v)) return alert('숫자를 입력하세요');
+  data.defaultTemp = v;
+  await save();
+  alert('기본 온도 저장됨');
+}
+async function addRange() {
+  const mn = parseFloat(document.getElementById('newMin').value);
+  const mx = parseFloat(document.getElementById('newMax').value);
+  if (isNaN(mn) || isNaN(mx)) return alert('두 온도를 모두 입력하세요');
+  data.ranges.push({ id: Date.now(), min: Math.min(mn, mx), max: Math.max(mn, mx), photos: [] });
+  data.ranges.sort((a, b) => a.min - b.min);
+  await save();
+  document.getElementById('newMin').value = '';
+  document.getElementById('newMax').value = '';
+  renderSettings();
+}
+function findRange(id) { return data.ranges.find(r => r.id === id); }
+
+async function delRange(id) {
+  const r = findRange(id);
+  if (!confirm(`${r.min} ~ ${r.max}℃ 구간과 사진을 모두 삭제할까요?`)) return;
+  data.ranges = data.ranges.filter(x => x.id !== id);
+  await save(); renderSettings();
+}
+async function movePhoto(id, i, d) {
+  const p = findRange(id).photos;
+  const j = i + d;
+  if (j < 0 || j >= p.length) return;
+  [p[i], p[j]] = [p[j], p[i]];
+  await save(); renderSettings();
+}
+async function delPhoto(id, i) {
+  if (!confirm('이 사진을 삭제할까요?')) return;
+  findRange(id).photos.splice(i, 1);
+  await save(); renderSettings();
+}
+function pickPhotos(id) {
+  addTarget = id;
+  document.getElementById('photoFile').click();
+}
+document.getElementById('photoFile').addEventListener('change', async e => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (!files.length || addTarget === null) return;
+  const r = findRange(addTarget);
+  for (const f of files) {
+    try { r.photos.push({ src: await resize(f) }); } catch (err) { alert('사진을 읽지 못했습니다'); }
+  }
+  await save(); renderSettings();
+});
+
+function renderSettings() {
+  const list = document.getElementById('rangeList');
+  list.innerHTML = '';
+  data.ranges.forEach(r => {
+    const box = document.createElement('div');
+    box.className = 'rangeBox';
+    let html = `<div class="rangeHead"><b>${r.min} ~ ${r.max}℃</b>
+      <button class="btn del" onclick="delRange(${r.id})">구간 삭제</button></div>`;
+    r.photos.forEach((p, i) => {
+      html += `<div class="item"><img src="${p.src}"><span>${i + 1}번</span>
+        <button class="btn" onclick="movePhoto(${r.id},${i},-1)">↑</button>
+        <button class="btn" onclick="movePhoto(${r.id},${i},1)">↓</button>
+        <button class="btn del" onclick="delPhoto(${r.id},${i})">✕</button></div>`;
+    });
+    html += `<button class="btn add" onclick="pickPhotos(${r.id})">＋ 사진 추가</button>`;
+    box.innerHTML = html;
+    list.appendChild(box);
+  });
+}
+
+// ===== 백업 =====
+function exportData() {
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '자전거옷_백업.json';
+  a.click();
+}
+document.getElementById('importFile').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (!d.ranges) throw 0;
+    if (!confirm('현재 데이터를 백업 파일로 바꿀까요?')) return;
+    data = d;
+    await save();
+    document.getElementById('defTemp').value = data.defaultTemp;
+    renderSettings();
+    alert('불러오기 완료');
+  } catch { alert('올바른 백업 파일이 아닙니다'); }
+});
+
+// ===== 시작 =====
+(async () => {
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  await openDB();
+  await load();
+  tIn.value = data.defaultTemp;
+  show();
+})();
+</script>
+</body>
+</html>
