@@ -90,7 +90,7 @@ header h1{font-size:18px}
 .hcol.bad{background:#fdecea}
 .hcol.sel{outline:3px solid #2b8de0;outline-offset:-3px;border-radius:6px}
 .r-date{height:22px}.r-time{height:24px}.r-ic{height:34px;font-size:22px}.r-gr{height:64px}
-.r-fl{height:24px}.r-rd{height:26px}.r-pop{height:22px}.r-pcp{height:22px}.r-wd{height:30px;line-height:1.1}
+.r-fl{height:24px}.r-rd{height:26px}.r-pop{height:30px}.r-pcp{height:22px}.r-wd{height:30px;line-height:1.1}
 .hcol .r-time{font-weight:700}
 .hcol.cm .r-time{color:#6a4cd6}
 .hcol .r-rd{font-weight:800;color:#6a4cd6;font-size:14px}
@@ -100,6 +100,9 @@ header h1{font-size:18px}
 .hlab .r-rd{color:#6a4cd6;font-weight:800}
 .hlab .r-ic{font-size:12px}
 .hlab .r-date{font-size:11px;font-weight:700;color:#2b8de0}
+.nc{font-size:.7em;letter-spacing:-3px}
+.hlab .r-pop{flex-direction:column;line-height:1.15}
+.hlab .r-pop small{font-size:10px;color:#2b8de0}
 .badge{background:#2b8de0;color:#fff;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700;white-space:nowrap}
 #hsvg{position:absolute;left:0;pointer-events:none}
 .wxNote{font-size:11px;color:#999;padding:6px 10px 0;line-height:1.5}
@@ -132,7 +135,7 @@ header h1{font-size:18px}
       <div class="r-ic">날씨</div>
       <div class="r-gr">기온</div>
       <div class="r-fl">체감</div>
-      <div class="r-pop">강수확률</div>
+      <div class="r-pop" id="popLab">강수확률</div>
       <div class="r-pcp">강수량</div>
       <div class="r-wd">바람</div>
     </div>
@@ -454,7 +457,7 @@ function baseDay() {
 }
 
 async function loadPlace(p) {
-  const out = { h: {}, tmx: {}, tmn: {} };
+  const out = { h: {}, tmx: {}, tmn: {}, popAt: null };
   const add = (items, ren) => items.forEach(i => {
     const k = i.fcstDate + i.fcstTime;
     (out.h[k] = out.h[k] || {})[ren[i.category] || i.category] = i.fcstValue;
@@ -466,8 +469,8 @@ async function loadPlace(p) {
     wxApi('getVilageFcst', baseVil(), p),
     wxApi('getUltraSrtFcst', baseUltra(), p)
   ]);
-  if (a.status === 'fulfilled') add(a.value, {});
-  if (b.status === 'fulfilled') add(b.value, {});
+  if (a.status === 'fulfilled') { add(a.value, {}); out.popAt = baseDay().time; }
+  if (b.status === 'fulfilled') { add(b.value, {}); out.popAt = baseVil().time; }
   if (c.status === 'fulfilled') add(c.value, { T1H: 'TMP', RN1: 'PCP' });
   if (b.status !== 'fulfilled' && c.status !== 'fulfilled') throw new Error('fail');
   return out;
@@ -493,7 +496,7 @@ const PTYT = { 1: '비', 2: '비/눈', 3: '눈', 4: '소나기', 5: '빗방울',
 function wIcon(v, h) {
   if (+v.PTY > 0) return PTY[v.PTY] || '🌧️';
   if (+v.SKY === 1 && (h < 6 || h >= 19)) return '🌙';
-  if (+v.SKY === 3 && (h < 6 || h >= 19)) return '☁️';
+  if (+v.SKY === 3 && (h < 6 || h >= 19)) return '<span class="nc">🌙☁️</span>';
   return SKY[v.SKY] || '';
 }
 // 가장 많이 나온 값 (같으면 더 흐린 쪽)
@@ -561,6 +564,7 @@ function renderWx(at, autoPick) {
     return { lab: ['오늘', '내일', '모레', '글피'][diff] || '', txt: `${dd.getDate()}일(${'일월화수목금토'[dd.getDay()]})` };
   };
   const W = WX[place];
+  document.getElementById('popLab').innerHTML = W.popAt ? `강수확률<small>${+W.popAt.substr(0, 2)}시 발표</small>` : '강수확률';
   const keys = hourList();
   const infos = {}; keys.forEach(k => infos[k] = info(k));
 
@@ -693,6 +697,8 @@ function showAuto(k, colder) {
   loadWx(false);
 })();
 document.addEventListener('visibilitychange', () => { if (!document.hidden) loadWx(false); });
+// 앱을 켜둔 상태에서도 10분마다 새로 받아오기
+setInterval(() => { if (!document.hidden) loadWx(true); }, 10 * 60000);
 // 옆으로 넘길 때 왼쪽에 지금 보이는 날짜 표시
 function updCurDate() {
   const cols = document.querySelectorAll('.hcol');
