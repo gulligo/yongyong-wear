@@ -1,0 +1,11 @@
+{
+  "name": "용용아 뭐입지?",
+  "short_name": "뭐입지?",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f2f2f2",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }
+  ]
+}
