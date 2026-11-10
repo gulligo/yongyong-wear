@@ -132,14 +132,13 @@ header h1{font-size:18px}
       <div class="r-ic">날씨</div>
       <div class="r-gr">기온</div>
       <div class="r-fl">체감</div>
-      <div class="r-rd">라이딩</div>
       <div class="r-pop">강수확률</div>
       <div class="r-pcp">강수량</div>
       <div class="r-wd">바람</div>
     </div>
     <div class="hscroll" id="hscroll"><div class="hgrid" id="hgrid"></div></div>
   </div>
-  <div class="wxNote">시간을 누르면 그 시간 라이딩 체감온도로 옷이 바뀝니다 · 보라 = 출퇴근 · 빨강 = 비·눈·강풍</div>
+  <div class="wxNote">시간을 누르면 그 시간 체감온도로 옷이 바뀝니다 · 보라 = 출퇴근 · 빨강 = 비·눈·강풍</div>
   <div id="autoInfo"></div>
 </div>
 
@@ -609,7 +608,6 @@ function renderWx(at, autoPick) {
       <div class="r-ic">${wIcon(x.v, hr)}</div>
       <div class="r-gr"></div>
       <div class="r-fl">${Math.round(x.feel)}°</div>
-      <div class="r-rd">${Math.round(x.ride)}°</div>
       <div class="r-pop">${x.pop == null ? '' : x.pop + '%'}</div>
       <div class="r-pcp">${pcpTx(x.v.PCP)}</div>
       <div class="r-wd ${x.w >= WIND_WARN ? 'strong' : ''}"><span>${isNaN(vec) ? '' : dirTx(vec)}</span><span>${x.w}m/s</span></div>
@@ -652,13 +650,13 @@ function pickHour(k, auto) {
 function showAuto(k, colder) {
   const xs = info(k);
   let i = place;
-  if (colder) i = xs[0].ride <= xs[1].ride ? 0 : 1;
-  const t = Math.round(xs[i].ride);
+  if (colder) i = xs[0].feel <= xs[1].feel ? 0 : 1;
+  const t = Math.round(xs[i].feel);
   const d = new Date(+k.substr(0, 4), +k.substr(4, 2) - 1, +k.substr(6, 2));
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const lab = ['오늘', '내일', '모레'][Math.round((d - today) / 86400000)] || '';
   document.getElementById('autoInfo').textContent =
-    `👕 ${lab} ${+k.substr(8, 2)}시 ${PLACES[i].name} 라이딩 체감 ${t}° 기준${colder ? ' (두 곳 중 더 추운 쪽)' : ''}`;
+    `👕 ${lab} ${+k.substr(8, 2)}시 ${PLACES[i].name} 체감 ${t}° 기준${colder ? ' (두 곳 중 더 추운 쪽)' : ''}`;
   tIn.value = t;
   show();
 }
