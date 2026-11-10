@@ -60,6 +60,50 @@ header h1{font-size:18px}
 .menuBox img{width:120px;height:120px;object-fit:cover;border-radius:10px}
 .menuBox div{margin:8px 0 12px;font-weight:700}
 .menuBox button{display:block;width:100%;padding:13px;margin-bottom:8px;font-size:16px}
+
+/* ===== 날씨 ===== */
+#wx{background:#fff;margin:10px 10px 0;border-radius:12px;padding:10px 0 8px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.wxTop{display:flex;justify-content:space-between;align-items:center;padding:0 10px 8px}
+.tabs{display:flex;border:1px solid #2b8de0;border-radius:8px;overflow:hidden}
+.tabs button{border:none;background:#fff;color:#2b8de0;font-size:14px;font-weight:700;padding:6px 14px}
+.tabs button.on{background:#2b8de0;color:#fff}
+.wxTime{font-size:12px;color:#999}
+.wxTime b{color:#2b8de0;cursor:pointer;margin-left:6px}
+#wxAlert{margin:0 10px 8px;font-size:14px;font-weight:700;border-radius:8px;padding:7px 10px}
+#wxAlert.bad{background:#fdecea;color:#c0392b}
+#wxAlert.good{background:#eaf4fd;color:#2b8de0}
+.days{display:flex;overflow-x:auto;gap:6px;padding:0 10px 10px}
+.dayc{flex:0 0 auto;min-width:118px;border:1px solid #e0e0e0;border-radius:10px;padding:6px 4px;text-align:center}
+.dayc .dn{font-size:14px;font-weight:700}.dayc .dn span{color:#2b8de0;font-size:12px;margin-left:3px}
+.dayc .am{display:flex;justify-content:space-around;font-size:11px;color:#888;margin-top:2px}
+.dayc .ic{display:flex;justify-content:space-around;font-size:24px}
+.dayc .mm{display:flex;justify-content:space-around;font-size:15px;font-weight:700}
+.dayc .pp{display:flex;justify-content:space-around;font-size:12px;color:#555}
+.lo{color:#2471a3}.hi{color:#c0392b}
+.hwrap{display:flex}
+.hlab{flex:0 0 52px;font-size:12px;color:#555;text-align:center;border-right:1px solid #eee}
+.hlab div,.hcol>div{display:flex;align-items:center;justify-content:center}
+.hscroll{overflow-x:auto;flex:1}
+.hgrid{display:flex;position:relative}
+.hcol{flex:0 0 52px;text-align:center;font-size:13px;border-right:1px dotted #e5e5e5;cursor:pointer}
+.hcol.cm{background:#f3f0ff}
+.hcol.bad{background:#fdecea}
+.hcol.sel{outline:3px solid #2b8de0;outline-offset:-3px;border-radius:6px}
+.r-date{height:22px}.r-time{height:24px}.r-ic{height:34px;font-size:22px}.r-gr{height:64px}
+.r-fl{height:24px}.r-rd{height:26px}.r-pop{height:22px}.r-pcp{height:22px}.r-wd{height:30px;line-height:1.1}
+.hcol .r-time{font-weight:700}
+.hcol.cm .r-time{color:#6a4cd6}
+.hcol .r-rd{font-weight:800;color:#6a4cd6;font-size:14px}
+.hcol .r-pop{color:#2b8de0}
+.hcol .r-wd{font-size:11px;color:#666;flex-direction:column}
+.hcol .r-wd.strong{color:#c0392b;font-weight:800}
+.hlab .r-rd{color:#6a4cd6;font-weight:800}
+.hlab .r-ic{font-size:12px}
+.hlab .r-date{font-size:11px;font-weight:700;color:#2b8de0}
+.badge{background:#2b8de0;color:#fff;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700;white-space:nowrap}
+#hsvg{position:absolute;left:0;pointer-events:none}
+.wxNote{font-size:11px;color:#999;padding:6px 10px 0;line-height:1.5}
+#autoInfo{font-size:13px;color:#6a4cd6;font-weight:700;padding:8px 10px 0}
 </style>
 </head>
 <body>
@@ -70,6 +114,34 @@ header h1{font-size:18px}
   <h1>용용아 뭐입지?</h1>
   <button class="btn" onclick="openSettings()">⚙ 설정</button>
 </header>
+
+<div id="wx">
+  <div class="wxTop">
+    <div class="tabs">
+      <button id="tab0" class="on" onclick="setPlace(0)">옥산</button>
+      <button id="tab1" onclick="setPlace(1)">송정동</button>
+    </div>
+    <div class="wxTime"><span id="wxAt">불러오는 중...</span><b onclick="loadWx(true)">↻</b></div>
+  </div>
+  <div id="wxAlert"></div>
+  <div class="days" id="days"></div>
+  <div class="hwrap">
+    <div class="hlab">
+      <div class="r-date" id="curDate"></div>
+      <div class="r-time">시각</div>
+      <div class="r-ic">날씨</div>
+      <div class="r-gr">기온</div>
+      <div class="r-fl">체감</div>
+      <div class="r-rd">라이딩</div>
+      <div class="r-pop">강수확률</div>
+      <div class="r-pcp">강수량</div>
+      <div class="r-wd">바람</div>
+    </div>
+    <div class="hscroll" id="hscroll"><div class="hgrid" id="hgrid"></div></div>
+  </div>
+  <div class="wxNote">시간을 누르면 그 시간 라이딩 체감온도로 옷이 바뀝니다 · 보라 = 출퇴근 · 빨강 = 비·눈·강풍</div>
+  <div id="autoInfo"></div>
+</div>
 
 <div class="main">
   <div class="left">
@@ -346,6 +418,251 @@ document.getElementById('importFile').addEventListener('change', async e => {
   } catch { alert('올바른 백업 파일이 아닙니다'); }
 });
 
+// ===== 날씨 (기상청 단기예보) =====
+const WX_KEY = '%2BEh8kbFd9hpLu1HNrPktRwJmihJIlWkCQ0YQ3JTiiaQrPCUydm4o8AR71ASjakiseukq%2BjGF0UJufZm89REMeQ%3D%3D';
+const PLACES = [{ name: '옥산', nx: 67, ny: 107 }, { name: '송정동', nx: 68, ny: 107 }];
+const COMMUTE = [6, 14, 18, 22];   // 출퇴근 시각
+const RIDE_KMH = 20;               // 자전거 평소 속도
+const WIND_WARN = 7;               // 강풍 경고 (m/s)
+const POP_WARN = 60;               // 비 경고 (%)
+const COL_W = 52;
+
+let WX = null, place = 0, selKey = null;
+const pad2 = n => String(n).padStart(2, '0');
+const ymd8 = d => `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
+
+async function wxApi(op, b, p) {
+  const url = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/${op}?serviceKey=${WX_KEY}`
+    + `&pageNo=1&numOfRows=1000&dataType=JSON&base_date=${b.date}&base_time=${b.time}&nx=${p.nx}&ny=${p.ny}`;
+  const j = JSON.parse(await (await fetch(url)).text());
+  const it = j.response && j.response.body && j.response.body.items && j.response.body.items.item;
+  if (!it) throw new Error(op);
+  return it;
+}
+function baseUltra() { const d = new Date(Date.now() - 45 * 60000); return { date: ymd8(d), time: pad2(d.getHours()) + '30' }; }
+function baseVil() {
+  const d = new Date(Date.now() - 10 * 60000);
+  let h = [2, 5, 8, 11, 14, 17, 20, 23].filter(x => x <= d.getHours()).pop();
+  if (h === undefined) { d.setDate(d.getDate() - 1); h = 23; }
+  return { date: ymd8(d), time: pad2(h) + '00' };
+}
+function baseYday() { const d = new Date(); d.setDate(d.getDate() - 1); return { date: ymd8(d), time: '2300' }; }
+
+async function loadPlace(p) {
+  const out = { h: {}, tmx: {}, tmn: {} };
+  const add = (items, ren) => items.forEach(i => {
+    const k = i.fcstDate + i.fcstTime;
+    (out.h[k] = out.h[k] || {})[ren[i.category] || i.category] = i.fcstValue;
+    if (i.category === 'TMX') out.tmx[i.fcstDate] = +i.fcstValue;
+    if (i.category === 'TMN') out.tmn[i.fcstDate] = +i.fcstValue;
+  });
+  const [a, b, c] = await Promise.allSettled([
+    wxApi('getVilageFcst', baseYday(), p),
+    wxApi('getVilageFcst', baseVil(), p),
+    wxApi('getUltraSrtFcst', baseUltra(), p)
+  ]);
+  if (a.status === 'fulfilled') add(a.value, {});
+  if (b.status === 'fulfilled') add(b.value, {});
+  if (c.status === 'fulfilled') add(c.value, { T1H: 'TMP', RN1: 'PCP' });
+  if (b.status !== 'fulfilled' && c.status !== 'fulfilled') throw new Error('fail');
+  return out;
+}
+
+// 체감온도 (기상청 공식)
+function chill(t, kmh) {
+  if (t > 10 || kmh < 4.68) return t;
+  const v = Math.pow(kmh, 0.16);
+  return 13.12 + 0.6215 * t - 11.37 * v + 0.3965 * t * v;
+}
+function summer(t, rh) {
+  const tw = t * Math.atan(0.151977 * Math.sqrt(rh + 8.313659)) + Math.atan(t + rh) - Math.atan(rh - 1.67633)
+    + 0.00391838 * Math.pow(rh, 1.5) * Math.atan(0.023101 * rh) - 4.686035;
+  return -0.2442 + 0.55399 * tw + 0.45535 * t - 0.0022 * tw * tw + 0.00278 * tw * t + 3.0;
+}
+function feel(t, w, rh, mon) { return (mon >= 5 && mon <= 9 && t >= 20 && !isNaN(rh)) ? summer(t, rh) : chill(t, w * 3.6); }
+function ride(t, w) { return chill(t, w * 3.6 + RIDE_KMH); }
+
+const SKY = { 1: '☀️', 3: '⛅', 4: '☁️' };
+const PTY = { 1: '🌧️', 2: '🌨️', 3: '❄️', 4: '🌦️', 5: '🌧️', 6: '🌨️', 7: '❄️' };
+const PTYT = { 1: '비', 2: '비/눈', 3: '눈', 4: '소나기', 5: '빗방울', 6: '진눈깨비', 7: '눈날림' };
+function wIcon(v, h) {
+  if (+v.PTY > 0) return PTY[v.PTY] || '🌧️';
+  if (+v.SKY === 1 && (h < 6 || h >= 19)) return '🌙';
+  if (+v.SKY === 3 && (h < 6 || h >= 19)) return '☁️';
+  return SKY[v.SKY] || '';
+}
+function dirTx(d) { return ['북', '북동', '동', '남동', '남', '남서', '서', '북서'][Math.round(d / 45) % 8]; }
+function pcpTx(v) { if (!v || v === '강수없음' || v === '0') return '-'; return String(v).replace('mm', ''); }
+
+async function loadWx(force) {
+  if (!force) {
+    try {
+      const c = JSON.parse(localStorage.getItem('wearWx') || 'null');
+      if (c) { WX = c.d; renderWx(new Date(c.at), !selKey); }
+      if (c && Date.now() - c.at < 10 * 60000) return;
+    } catch (e) {}
+  }
+  document.getElementById('wxAt').textContent = '불러오는 중...';
+  try {
+    WX = await Promise.all(PLACES.map(loadPlace));
+    try { localStorage.setItem('wearWx', JSON.stringify({ at: Date.now(), d: WX })); } catch (e) {}
+    renderWx(new Date(), !selKey);
+  } catch (e) {
+    document.getElementById('wxAt').textContent = '날씨를 불러오지 못했습니다';
+  }
+}
+
+function setPlace(i) {
+  place = i;
+  document.getElementById('tab0').classList.toggle('on', i === 0);
+  document.getElementById('tab1').classList.toggle('on', i === 1);
+  renderWx(null, false);
+}
+
+function hourList() {
+  const now = new Date();
+  const cur = ymd8(now) + pad2(now.getHours()) + '00';
+  return [...new Set(WX.flatMap(w => Object.keys(w.h)))]
+    .filter(k => k >= cur && WX.every(w => w.h[k] && w.h[k].TMP != null))
+    .sort();
+}
+function info(k) {
+  const vs = WX.map(w => w.h[k]);
+  const mon = +k.substr(4, 2);
+  return vs.map(v => {
+    const t = +v.TMP, w = +v.WSD || 0, rh = +v.REH;
+    return { v, t, w, rh, feel: feel(t, w, rh, mon), ride: ride(t, w), pop: v.POP != null ? +v.POP : null, pty: +v.PTY || 0 };
+  });
+}
+const isBad = x => x.pty > 0 || (x.pop != null && x.pop >= POP_WARN) || x.w >= WIND_WARN;
+const shiftK = (k, d) => {
+  const t = new Date(+k.substr(0, 4), +k.substr(4, 2) - 1, +k.substr(6, 2), +k.substr(8, 2) + d);
+  return ymd8(t) + pad2(t.getHours()) + '00';
+};
+
+function renderWx(at, autoPick) {
+  if (!WX) return;
+  if (at) document.getElementById('wxAt').textContent = `${pad2(at.getHours())}:${pad2(at.getMinutes())} 기상청`;
+  const now = new Date();
+  const dayName = d8 => {
+    const dd = new Date(+d8.substr(0, 4), +d8.substr(4, 2) - 1, +d8.substr(6, 2));
+    const diff = Math.round((dd - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+    return { lab: ['오늘', '내일', '모레', '글피'][diff] || '', txt: `${dd.getDate()}일(${'일월화수목금토'[dd.getDay()]})` };
+  };
+  const W = WX[place];
+  const keys = hourList();
+  const infos = {}; keys.forEach(k => infos[k] = info(k));
+
+  // --- 날짜별 요약 (오전/오후) ---
+  const dates = [...new Set(Object.keys(W.h).map(k => k.substr(0, 8)))].sort().filter(d => d >= ymd8(now)).slice(0, 3);
+  document.getElementById('days').innerHTML = dates.map(d => {
+    const hs = Object.keys(W.h).filter(k => k.startsWith(d) && W.h[k].TMP != null);
+    const half = am => {
+      const ks = hs.filter(k => am ? +k.substr(8, 2) < 12 : +k.substr(8, 2) >= 12);
+      if (!ks.length) return { ic: '-', pop: '-' };
+      const pick = ks.find(k => +W.h[k].PTY > 0) || ks.find(k => k.endsWith(am ? '0900' : '1500')) || ks[Math.floor(ks.length / 2)];
+      const pops = ks.map(k => +W.h[k].POP).filter(x => !isNaN(x));
+      return { ic: wIcon(W.h[pick], am ? 9 : 15), pop: pops.length ? Math.max(...pops) + '%' : '-' };
+    };
+    const temps = hs.map(k => +W.h[k].TMP);
+    const lo = W.tmn[d] != null ? W.tmn[d] : temps.length ? Math.min(...temps) : null;
+    const hi = W.tmx[d] != null ? W.tmx[d] : temps.length ? Math.max(...temps) : null;
+    const a = half(true), p = half(false), n = dayName(d);
+    return `<div class="dayc"><div class="dn">${n.txt}<span>${n.lab}</span></div>
+      <div class="am"><span>오전</span><span>오후</span></div>
+      <div class="ic"><span>${a.ic}</span><span>${p.ic}</span></div>
+      <div class="mm"><span class="lo">${lo == null ? '-' : Math.round(lo) + '°'}</span><span class="hi">${hi == null ? '-' : Math.round(hi) + '°'}</span></div>
+      <div class="pp"><span>${a.pop}</span><span>${p.pop}</span></div></div>`;
+  }).join('');
+
+  // --- 출퇴근 경고 (두 곳 모두, 앞뒤 1시간) ---
+  const badC = {}, alerts = [];
+  keys.filter(k => COMMUTE.includes(+k.substr(8, 2))).forEach(k => {
+    const around = [-1, 0, 1].map(d => infos[shiftK(k, d)]).filter(Boolean).flat();
+    if (!around.some(isBad)) return;
+    badC[k] = true;
+    const what = [];
+    const pty = around.map(x => x.pty).find(x => x > 0);
+    const pop = Math.max(...around.map(x => x.pop || 0));
+    if (pty) what.push(PTYT[pty]); else if (pop >= POP_WARN) what.push(`비 ${pop}%`);
+    const w = Math.max(...around.map(x => x.w));
+    if (w >= WIND_WARN) what.push(`바람 ${w}m/s`);
+    alerts.push(`${dayName(k.substr(0, 8)).lab} ${+k.substr(8, 2)}시 ${what.join(', ')}`);
+  });
+  const al = document.getElementById('wxAlert');
+  al.className = alerts.length ? 'bad' : 'good';
+  al.textContent = alerts.length ? '⚠️ ' + alerts.slice(0, 3).join(' · ') : '👍 모레까지 출퇴근 시간 비·강풍 없음';
+
+  // --- 시간별 ---
+  let lastD = '';
+  const grid = document.getElementById('hgrid');
+  grid.innerHTML = keys.map(k => {
+    const x = infos[k][place], hr = +k.substr(8, 2), d = k.substr(0, 8);
+    const date = d !== lastD ? `<span class="badge">${dayName(d).txt}</span>` : '';
+    lastD = d;
+    const cm = COMMUTE.includes(hr);
+    const cls = [cm ? 'cm' : '', (cm && badC[k]) || isBad(x) ? 'bad' : '', k === selKey ? 'sel' : ''].join(' ');
+    const vec = +x.v.VEC;
+    return `<div class="hcol ${cls}" data-k="${k}" onclick="pickHour('${k}')">
+      <div class="r-date">${date}</div>
+      <div class="r-time">${hr}시</div>
+      <div class="r-ic">${wIcon(x.v, hr)}</div>
+      <div class="r-gr"></div>
+      <div class="r-fl">${Math.round(x.feel)}°</div>
+      <div class="r-rd">${Math.round(x.ride)}°</div>
+      <div class="r-pop">${x.pop == null ? '' : x.pop + '%'}</div>
+      <div class="r-pcp">${pcpTx(x.v.PCP)}</div>
+      <div class="r-wd ${x.w >= WIND_WARN ? 'strong' : ''}"><span>${isNaN(vec) ? '' : dirTx(vec)}</span><span>${x.w}m/s</span></div>
+    </div>`;
+  }).join('');
+
+  // --- 기온 꺾은선 그래프 ---
+  const temps = keys.map(k => infos[k][place].t);
+  if (temps.length) {
+    const mx = Math.max(...temps), mn = Math.min(...temps), span = Math.max(mx - mn, 1);
+    const top = 22 + 24 + 34, H = 64;
+    const pts = temps.map((t, i) => [i * COL_W + COL_W / 2, top + 18 + (mx - t) / span * (H - 26)]);
+    const svg = `<svg id="hsvg" width="${keys.length * COL_W}" height="${top + H}" style="top:0">
+      <polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="#2b8de0" stroke-width="2.5"/>
+      ${pts.map((p, i) => `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="#2b8de0"/>
+        <text x="${p[0]}" y="${p[1] - 8}" text-anchor="middle" font-size="13" fill="#222">${Math.round(temps[i])}°</text>`).join('')}
+    </svg>`;
+    grid.insertAdjacentHTML('beforeend', svg);
+  }
+
+  // --- 처음엔 다음 출퇴근 시간 자동 선택 (두 곳 중 더 추운 쪽) ---
+  if (autoPick || !selKey || !infos[selKey]) {
+    const next = keys.find(k => COMMUTE.includes(+k.substr(8, 2)) && k > keys[0]) || keys[0];
+    if (next) pickHour(next, true);
+  } else {
+    showAuto(selKey, false);
+  }
+}
+
+function pickHour(k, auto) {
+  selKey = k;
+  document.querySelectorAll('.hcol').forEach(c => c.classList.toggle('sel', c.dataset.k === k));
+  showAuto(k, auto);
+  if (auto) {
+    const col = document.querySelector(`.hcol[data-k="${k}"]`);
+    if (col) document.getElementById('hscroll').scrollLeft = Math.max(0, col.offsetLeft - COL_W * 2);
+  }
+  updCurDate();
+}
+function showAuto(k, colder) {
+  const xs = info(k);
+  let i = place;
+  if (colder) i = xs[0].ride <= xs[1].ride ? 0 : 1;
+  const t = Math.round(xs[i].ride);
+  const d = new Date(+k.substr(0, 4), +k.substr(4, 2) - 1, +k.substr(6, 2));
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const lab = ['오늘', '내일', '모레'][Math.round((d - today) / 86400000)] || '';
+  document.getElementById('autoInfo').textContent =
+    `👕 ${lab} ${+k.substr(8, 2)}시 ${PLACES[i].name} 라이딩 체감 ${t}° 기준${colder ? ' (두 곳 중 더 추운 쪽)' : ''}`;
+  tIn.value = t;
+  show();
+}
+
 // ===== 시작 =====
 (async () => {
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
@@ -356,7 +673,18 @@ document.getElementById('importFile').addEventListener('change', async e => {
   try { last = localStorage.getItem('lastTemp'); } catch (e) {}
   tIn.value = (last !== null && last !== '') ? last : 10;
   show();
+  loadWx(false);
 })();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) loadWx(false); });
+// 옆으로 넘길 때 왼쪽에 지금 보이는 날짜 표시
+function updCurDate() {
+  const cols = document.querySelectorAll('.hcol');
+  const c = cols[Math.min(cols.length - 1, Math.floor(document.getElementById('hscroll').scrollLeft / COL_W))];
+  if (!c) return;
+  const k = c.dataset.k;
+  document.getElementById('curDate').textContent = `${+k.substr(6, 2)}일`;
+}
+document.getElementById('hscroll').addEventListener('scroll', updCurDate);
 
 // 시작 화면 1.5초 후 사라짐
 setTimeout(() => {
