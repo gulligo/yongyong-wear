@@ -6,45 +6,53 @@
 <title>용용아 뭐입지?</title>
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ffffff">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,"Noto Sans KR",sans-serif;background:#111;color:#eee;min-height:100vh}
+body{font-family:-apple-system,"Noto Sans KR",sans-serif;background:#f2f2f2;color:#222;min-height:100vh}
 button{font-family:inherit;cursor:pointer}
-header{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:#1b1b1b;position:sticky;top:0;z-index:5}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:#fff;border-bottom:1px solid #e0e0e0;position:sticky;top:0;z-index:5}
 header h1{font-size:18px}
-.btn{background:#2a2a2a;border:1px solid #444;color:#eee;border-radius:8px;padding:7px 12px;font-size:14px}
+.btn{background:#fff;border:1px solid #ccc;color:#222;border-radius:8px;padding:7px 12px;font-size:14px}
 .main{display:flex;gap:10px;padding:10px}
-.left{width:96px;flex-shrink:0;position:sticky;top:62px;align-self:flex-start;background:#1b1b1b;border-radius:12px;padding:12px 8px;text-align:center}
-.left input{width:100%;font-size:30px;font-weight:700;text-align:center;background:#000;color:#fff;border:1px solid #333;border-radius:8px;padding:8px 0}
+.left{width:96px;flex-shrink:0;position:sticky;top:62px;align-self:flex-start;background:#fff;border-radius:12px;padding:12px 8px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.left input{width:100%;font-size:30px;font-weight:700;text-align:center;background:#f7f7f7;color:#222;border:1px solid #ddd;border-radius:8px;padding:8px 0}
 .unit{font-size:13px;color:#888;margin:4px 0 10px}
 .pm{display:block;width:100%;font-size:28px;font-weight:700;padding:10px 0;margin-bottom:8px;border:none;border-radius:10px;color:#fff}
 .plus{background:#c0392b}.minus{background:#2471a3}
 .reset{font-size:12px;width:100%;padding:6px 0}
 .right{flex:1;min-width:0}
-.rangeTitle{font-size:15px;color:#f5b041;margin:2px 0 8px;font-weight:700}
+.rangeTitle{font-size:15px;color:#d35400;margin:2px 0 8px;font-weight:700}
 .photo{position:relative;margin-bottom:10px}
-.photo img{width:100%;border-radius:10px;display:block}
-.no{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.7);border-radius:12px;padding:2px 9px;font-size:13px}
-.empty{color:#777;padding:40px 10px;text-align:center;line-height:1.7}
+.photo img{width:100%;border-radius:10px;display:block;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.no{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.6);color:#fff;border-radius:12px;padding:2px 9px;font-size:13px}
+.empty{color:#999;padding:40px 10px;text-align:center;line-height:1.7}
 #viewer{display:none;position:fixed;inset:0;background:#000;z-index:20;align-items:center;justify-content:center}
 #viewer img{max-width:100%;max-height:100%}
-#settings{display:none;position:fixed;inset:0;background:#111;z-index:10;overflow-y:auto;padding:0 0 40px}
-.sec{background:#1b1b1b;margin:10px;border-radius:12px;padding:12px}
+#settings{display:none;position:fixed;inset:0;background:#f2f2f2;z-index:10;overflow-y:auto;padding:0 0 40px}
+.sec{background:#fff;margin:10px;border-radius:12px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
 .sec h2{font-size:15px;margin-bottom:10px}
 .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.row input{width:70px;font-size:16px;padding:7px;background:#000;color:#fff;border:1px solid #444;border-radius:8px;text-align:center}
-.rangeBox{border:1px solid #333;border-radius:10px;padding:10px;margin-top:10px}
+.row input{width:70px;font-size:16px;padding:7px;background:#f7f7f7;color:#222;border:1px solid #ccc;border-radius:8px;text-align:center}
+.rangeBox{border:1px solid #e0e0e0;border-radius:10px;padding:10px;margin-top:10px}
 .rangeHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-.rangeHead b{color:#f5b041;font-size:16px}
+.rangeHead b{color:#d35400;font-size:16px}
 .item{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .item img{width:60px;height:60px;object-fit:cover;border-radius:6px}
-.item span{flex:1;color:#999;font-size:13px}
+.item span{flex:1;color:#888;font-size:13px}
 .item button{width:38px;height:38px;font-size:16px}
-.del{background:#5a1f1f;border-color:#7a2a2a}
-.add{background:#1e4d2b;border-color:#2c6e3f;width:100%;margin-top:4px;padding:9px}
+.del{background:#fdecea;border-color:#f5c6cb;color:#c0392b}
+.add{background:#e8f5e9;border-color:#a5d6a7;color:#2e7d32;width:100%;margin-top:4px;padding:9px}
+#splash{position:fixed;inset:0;background:#f2f2f2;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .5s}
+#splash img{width:180px;height:180px;border-radius:32px;box-shadow:0 4px 16px rgba(0,0,0,.15)}
+#splash div{font-size:22px;font-weight:700}
+#splash.hide{opacity:0}
 </style>
 </head>
 <body>
+
+<div id="splash"><img src="icon-512.png"><div>용용아 뭐입지?</div></div>
 
 <header>
   <h1>용용아 뭐입지?</h1>
@@ -306,6 +314,13 @@ document.getElementById('importFile').addEventListener('change', async e => {
   tIn.value = data.defaultTemp;
   show();
 })();
+
+// 시작 화면 1.5초 후 사라짐
+setTimeout(() => {
+  const sp = document.getElementById('splash');
+  sp.classList.add('hide');
+  setTimeout(() => sp.remove(), 500);
+}, 1500);
 </script>
 </body>
 </html>
