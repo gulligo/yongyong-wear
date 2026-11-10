@@ -48,6 +48,14 @@ header h1{font-size:18px}
 #splash img{width:180px;height:180px;border-radius:32px;box-shadow:0 4px 16px rgba(0,0,0,.15)}
 #splash div{font-size:22px;font-weight:700}
 #splash.hide{opacity:0}
+.weather{display:flex;gap:8px;padding:10px 10px 0}
+.wbox{flex:1;background:#fff;border-radius:12px;padding:8px 10px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.wbox b{display:block;margin-bottom:6px;color:#555;font-size:14px}
+.wrow{margin-bottom:6px}
+.chip{display:inline-block;padding:4px 10px;border-radius:14px;background:#f2f2f2;font-weight:700;font-size:15px;cursor:pointer}
+.chip.hi{color:#c0392b}.chip.lo{color:#2471a3}
+.feel{display:inline-block;margin-top:3px;font-size:13px;color:#777;cursor:pointer;padding:2px 4px}
+.wmsg{flex:1;color:#888;font-size:13px;padding:6px 2px}
 </style>
 </head>
 <body>
@@ -58,6 +66,8 @@ header h1{font-size:18px}
   <h1>용용아 뭐입지?</h1>
   <button class="btn" onclick="openSettings()">⚙ 설정</button>
 </header>
+
+<div class="weather" id="weather"><div class="wmsg">위치 확인 중…</div></div>
 
 <div class="main">
   <div class="left">
@@ -306,6 +316,34 @@ document.getElementById('importFile').addEventListener('change', async e => {
   } catch { alert('올바른 백업 파일이 아닙니다'); }
 });
 
+// ===== 날씨 (오늘·내일 최고·최저 + 체감) =====
+function setTemp(v) { tIn.value = v; show(); window.scrollTo(0, 0); }
+function wrow(cls, label, v, f) {
+  return `<div class="wrow"><span class="chip ${cls}" onclick="setTemp(${v})">${label} ${v}°</span><br>
+    <span class="feel" onclick="setTemp(${f})">(체감 ${f}°)</span></div>`;
+}
+function loadWeather() {
+  const w = document.getElementById('weather');
+  if (!navigator.geolocation) { w.innerHTML = '<div class="wmsg">위치 기능을 쓸 수 없습니다</div>'; return; }
+  w.innerHTML = '<div class="wmsg">위치 확인 중…</div>';
+  navigator.geolocation.getCurrentPosition(async pos => {
+    try {
+      const { latitude: la, longitude: lo } = pos.coords;
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&daily=temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min&timezone=auto&forecast_days=2`;
+      const d = (await (await fetch(url)).json()).daily;
+      const r = Math.round;
+      const box = (i, name) => `<div class="wbox"><b>${name}</b>
+        ${wrow('hi', '최고', r(d.temperature_2m_max[i]), r(d.apparent_temperature_max[i]))}
+        ${wrow('lo', '최저', r(d.temperature_2m_min[i]), r(d.apparent_temperature_min[i]))}</div>`;
+      w.innerHTML = box(0, '오늘') + box(1, '내일');
+    } catch (e) {
+      w.innerHTML = '<div class="wmsg">날씨를 가져오지 못했습니다 <span class="chip" onclick="loadWeather()">다시 시도</span></div>';
+    }
+  }, () => {
+    w.innerHTML = '<div class="wmsg">위치 권한이 필요합니다 <span class="chip" onclick="loadWeather()">다시 시도</span></div>';
+  }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 });
+}
+
 // ===== 시작 =====
 (async () => {
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
@@ -313,6 +351,7 @@ document.getElementById('importFile').addEventListener('change', async e => {
   await load();
   tIn.value = data.defaultTemp;
   show();
+  loadWeather();
 })();
 
 // 시작 화면 1.5초 후 사라짐
