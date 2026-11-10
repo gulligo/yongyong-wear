@@ -445,7 +445,13 @@ function baseVil() {
   if (h === undefined) { d.setDate(d.getDate() - 1); h = 23; }
   return { date: ymd8(d), time: pad2(h) + '00' };
 }
-function baseYday() { const d = new Date(); d.setDate(d.getDate() - 1); return { date: ymd8(d), time: '2300' }; }
+// 오늘 최저·최고가 들어있는 예보: 오늘 새벽 2시 발표 (2시 10분 전이면 어제 23시)
+function baseDay() {
+  const d = new Date(Date.now() - 10 * 60000);
+  if (d.getHours() >= 2) return { date: ymd8(d), time: '0200' };
+  d.setDate(d.getDate() - 1);
+  return { date: ymd8(d), time: '2300' };
+}
 
 async function loadPlace(p) {
   const out = { h: {}, tmx: {}, tmn: {} };
@@ -456,7 +462,7 @@ async function loadPlace(p) {
     if (i.category === 'TMN') out.tmn[i.fcstDate] = +i.fcstValue;
   });
   const [a, b, c] = await Promise.allSettled([
-    wxApi('getVilageFcst', baseYday(), p),
+    wxApi('getVilageFcst', baseDay(), p),
     wxApi('getVilageFcst', baseVil(), p),
     wxApi('getUltraSrtFcst', baseUltra(), p)
   ]);
@@ -489,6 +495,12 @@ function wIcon(v, h) {
   if (+v.SKY === 1 && (h < 6 || h >= 19)) return '🌙';
   if (+v.SKY === 3 && (h < 6 || h >= 19)) return '☁️';
   return SKY[v.SKY] || '';
+}
+// 가장 많이 나온 값 (같으면 더 흐린 쪽)
+function mode(arr) {
+  const c = {};
+  arr.forEach(x => c[x] = (c[x] || 0) + 1);
+  return +Object.keys(c).sort((a, b) => (c[b] - c[a]) || (b - a))[0];
 }
 function dirTx(d) { return ['북', '북동', '동', '남동', '남', '남서', '서', '북서'][Math.round(d / 45) % 8]; }
 function pcpTx(v) { if (!v || v === '강수없음' || v === '0') return '-'; return String(v).replace('mm', ''); }
@@ -556,12 +568,19 @@ function renderWx(at, autoPick) {
   const dates = [...new Set(Object.keys(W.h).map(k => k.substr(0, 8)))].sort().filter(d => d >= ymd8(now)).slice(0, 3);
   document.getElementById('days').innerHTML = dates.map(d => {
     const hs = Object.keys(W.h).filter(k => k.startsWith(d) && W.h[k].TMP != null);
+    // 오전(0~11시)/오후(12~23시): 날씨누리처럼 지난 시간은 빼고,
+    // 하늘은 가장 많이 나온 상태, 강수확률은 평균을 10% 단위로 반올림
+    const cur = ymd8(now) + pad2(now.getHours()) + '00';
     const half = am => {
-      const ks = hs.filter(k => am ? +k.substr(8, 2) < 12 : +k.substr(8, 2) >= 12);
+      const ks = hs.filter(k => (am ? +k.substr(8, 2) < 12 : +k.substr(8, 2) >= 12) && k >= cur);
       if (!ks.length) return { ic: '-', pop: '-' };
-      const pick = ks.find(k => +W.h[k].PTY > 0) || ks.find(k => k.endsWith(am ? '0900' : '1500')) || ks[Math.floor(ks.length / 2)];
+      const rain = ks.map(k => +W.h[k].PTY || 0).filter(x => x > 0);
+      let v;
+      if (rain.length) v = { PTY: mode(rain) };
+      else v = { PTY: 0, SKY: mode(ks.map(k => +W.h[k].SKY).filter(x => !isNaN(x))) };
       const pops = ks.map(k => +W.h[k].POP).filter(x => !isNaN(x));
-      return { ic: wIcon(W.h[pick], am ? 9 : 15), pop: pops.length ? Math.max(...pops) + '%' : '-' };
+      const avg = pops.length ? Math.round(pops.reduce((a, b) => a + b, 0) / pops.length / 10) * 10 : null;
+      return { ic: wIcon(v, am ? 9 : 15), pop: avg == null ? '-' : avg + '%' };
     };
     const temps = hs.map(k => +W.h[k].TMP);
     const lo = W.tmn[d] != null ? W.tmn[d] : temps.length ? Math.min(...temps) : null;
