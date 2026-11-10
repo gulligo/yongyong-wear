@@ -35,10 +35,6 @@ header h1{font-size:18px}
 .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .row input{width:70px;font-size:16px;padding:7px;background:#f7f7f7;color:#222;border:1px solid #ccc;border-radius:8px;text-align:center}
 .rangeBox{border:1px solid #e0e0e0;border-radius:10px;padding:10px;margin-top:10px}
-.rangeTitleRow{display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:4px 2px}
-.rangeTitleRow b{color:#d35400;font-size:17px;flex:1;margin-left:10px}
-.rangeThumb{width:48px;height:48px;object-fit:cover;border-radius:8px;background:#eee;flex-shrink:0}
-.rangeTitleRow span{color:#888;font-size:13px}
 .rangeHead{margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 .rangeHead b{color:#d35400;font-size:16px}
 .rangeEdit{display:flex;align-items:center;gap:4px;color:#d35400;font-weight:700}
@@ -61,6 +57,17 @@ header h1{font-size:18px}
 .chip.hi{color:#c0392b}.chip.lo{color:#2471a3}
 .feel{display:inline-block;margin-top:3px;font-size:13px;color:#777;cursor:pointer;padding:2px 4px}
 .wmsg{flex:1;color:#888;font-size:13px;padding:6px 2px}
+.rangeTop{display:flex;align-items:center;gap:10px}
+.rangeThumb{width:56px;height:56px;object-fit:cover;border-radius:8px;background:#eee;flex-shrink:0}
+.cnt{margin-left:auto;color:#888;font-size:13px}
+.rangeBtns{display:flex;gap:6px;margin-top:8px}
+.rangeBtns .btn{flex:1;padding:8px 0;margin:0;width:auto}
+.photo img{-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
+#menu{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:25;align-items:flex-end;justify-content:center}
+.menuBox{background:#fff;width:100%;border-radius:16px 16px 0 0;padding:16px;text-align:center}
+.menuBox img{width:120px;height:120px;object-fit:cover;border-radius:10px}
+.menuBox div{margin:8px 0 12px;font-weight:700}
+.menuBox button{display:block;width:100%;padding:13px;margin-bottom:8px;font-size:16px}
 </style>
 </head>
 <body>
@@ -82,6 +89,16 @@ header h1{font-size:18px}
     <button class="pm minus" onclick="step(-1)">−</button>
   </div>
   <div class="right" id="photos"></div>
+</div>
+
+<div id="menu" onclick="if(event.target===this)closeMenu()">
+  <div class="menuBox">
+    <img id="menuImg"><div id="menuTitle"></div>
+    <button class="btn" onclick="menuMove(-1)">↑ 앞으로</button>
+    <button class="btn" onclick="menuMove(1)">↓ 뒤로</button>
+    <button class="btn del" onclick="menuDel()">삭제</button>
+    <button class="btn" onclick="closeMenu()">닫기</button>
+  </div>
 </div>
 
 <div id="viewer" onclick="this.style.display='none'"><img id="viewImg"></div>
@@ -196,13 +213,46 @@ function show() {
       const d = document.createElement('div');
       d.className = 'photo';
       d.innerHTML = `<img src="${p.src}"><div class="no">${i + 1}</div>`;
+      let timer = null, longFired = false, sx = 0, sy = 0;
+      const cancel = () => { clearTimeout(timer); timer = null; };
+      d.addEventListener('pointerdown', e => {
+        longFired = false; sx = e.clientX; sy = e.clientY;
+        timer = setTimeout(() => { longFired = true; openMenu(r.id, i); }, 550);
+      });
+      d.addEventListener('pointermove', e => { if (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10) cancel(); });
+      d.addEventListener('pointerup', cancel);
+      d.addEventListener('pointercancel', cancel);
+      d.addEventListener('contextmenu', e => e.preventDefault());
       d.onclick = () => {
+        if (longFired) return;
         document.getElementById('viewImg').src = p.src;
         document.getElementById('viewer').style.display = 'flex';
       };
       box.appendChild(d);
     });
   });
+}
+
+// ===== 사진 길게 누르기 메뉴 =====
+let menuR = null, menuI = 0;
+function openMenu(id, i) { menuR = id; menuI = i; drawMenu(); document.getElementById('menu').style.display = 'flex'; }
+function drawMenu() {
+  const ph = findRange(menuR).photos;
+  document.getElementById('menuImg').src = ph[menuI].src;
+  document.getElementById('menuTitle').textContent = `${menuI + 1}번 / ${ph.length}장`;
+}
+function closeMenu() { document.getElementById('menu').style.display = 'none'; }
+async function menuMove(d) {
+  const ph = findRange(menuR).photos, j = menuI + d;
+  if (j < 0 || j >= ph.length) return;
+  [ph[menuI], ph[j]] = [ph[j], ph[menuI]];
+  menuI = j;
+  await save(); show(); drawMenu();
+}
+async function menuDel() {
+  if (!confirm('이 사진을 삭제할까요?')) return;
+  findRange(menuR).photos.splice(menuI, 1);
+  await save(); closeMenu(); show();
 }
 
 // ===== 설정 =====
@@ -222,7 +272,6 @@ async function addRange() {
   if (data.ranges.some(r => r.min === lo && r.max === hi)) return alert(`${lo} ~ ${hi}℃ 구간은 이미 있습니다`);
   const id = Date.now();
   data.ranges.push({ id, min: lo, max: hi, photos: [] });
-  openId = id;
   sortRanges();
   await save();
   document.getElementById('newMin').value = '';
@@ -249,18 +298,6 @@ async function delRange(id) {
   data.ranges = data.ranges.filter(x => x.id !== id);
   await save(); renderSettings();
 }
-async function movePhoto(id, i, d) {
-  const p = findRange(id).photos;
-  const j = i + d;
-  if (j < 0 || j >= p.length) return;
-  [p[i], p[j]] = [p[j], p[i]];
-  await save(); renderSettings();
-}
-async function delPhoto(id, i) {
-  if (!confirm('이 사진을 삭제할까요?')) return;
-  findRange(id).photos.splice(i, 1);
-  await save(); renderSettings();
-}
 function pickPhotos(id) {
   addTarget = id;
   document.getElementById('photoFile').click();
@@ -276,33 +313,22 @@ document.getElementById('photoFile').addEventListener('change', async e => {
   await save(); renderSettings();
 });
 
-let openId = null;
-function toggleRange(id) { openId = (openId === id) ? null : id; renderSettings(); }
 function renderSettings() {
   const list = document.getElementById('rangeList');
   list.innerHTML = '';
   data.ranges.forEach(r => {
     const box = document.createElement('div');
     box.className = 'rangeBox';
-    const open = openId === r.id;
     const thumb = r.photos.length ? `<img class="rangeThumb" src="${r.photos[0].src}">` : `<div class="rangeThumb"></div>`;
-    let html = `<div class="rangeTitleRow" onclick="toggleRange(${r.id})">
-      ${thumb}<b>${r.min} ~ ${r.max}℃</b><span>사진 ${r.photos.length}장 ${open ? '▲' : '▼'}</span></div>`;
-    if (open) {
-      html += `<div class="rangeHead">
-        <span class="rangeEdit"><input type="number" inputmode="decimal" id="min${r.id}" value="${r.min}"> ~
-        <input type="number" inputmode="decimal" id="max${r.id}" value="${r.max}"> ℃
-        <button class="btn" onclick="editRange(${r.id})">변경</button></span>
-        <button class="btn del" onclick="delRange(${r.id})">삭제</button></div>`;
-      r.photos.forEach((p, i) => {
-        html += `<div class="item"><img src="${p.src}"><span>${i + 1}번</span>
-          <button class="btn" onclick="movePhoto(${r.id},${i},-1)">↑</button>
-          <button class="btn" onclick="movePhoto(${r.id},${i},1)">↓</button>
-          <button class="btn del" onclick="delPhoto(${r.id},${i})">✕</button></div>`;
-      });
-      html += `<button class="btn add" onclick="pickPhotos(${r.id})">＋ 사진 추가</button>`;
-    }
-    box.innerHTML = html;
+    box.innerHTML = `<div class="rangeTop">${thumb}
+      <span class="rangeEdit"><input type="number" inputmode="decimal" id="min${r.id}" value="${r.min}"> ~
+      <input type="number" inputmode="decimal" id="max${r.id}" value="${r.max}"> ℃</span>
+      <span class="cnt">${r.photos.length}장</span></div>
+      <div class="rangeBtns">
+        <button class="btn" onclick="editRange(${r.id})">변경</button>
+        <button class="btn del" onclick="delRange(${r.id})">삭제</button>
+        <button class="btn add" onclick="pickPhotos(${r.id})">＋사진</button>
+      </div>`;
     list.appendChild(box);
   });
 }
