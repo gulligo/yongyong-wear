@@ -35,7 +35,11 @@ header h1{font-size:18px}
 .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .row input{width:70px;font-size:16px;padding:7px;background:#f7f7f7;color:#222;border:1px solid #ccc;border-radius:8px;text-align:center}
 .rangeBox{border:1px solid #e0e0e0;border-radius:10px;padding:10px;margin-top:10px}
-.rangeHead{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.rangeTitleRow{display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:4px 2px}
+.rangeTitleRow b{color:#d35400;font-size:17px;flex:1;margin-left:10px}
+.rangeThumb{width:48px;height:48px;object-fit:cover;border-radius:8px;background:#eee;flex-shrink:0}
+.rangeTitleRow span{color:#888;font-size:13px}
+.rangeHead{margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 .rangeHead b{color:#d35400;font-size:16px}
 .rangeEdit{display:flex;align-items:center;gap:4px;color:#d35400;font-weight:700}
 .rangeEdit input{width:52px;font-size:16px;padding:6px 2px;background:#f7f7f7;color:#d35400;font-weight:700;border:1px solid #ccc;border-radius:8px;text-align:center}
@@ -173,7 +177,7 @@ function show() {
   box.innerHTML = '';
   if (isNaN(t)) { box.innerHTML = '<div class="empty">온도를 입력하세요</div>'; return; }
   try { localStorage.setItem('lastTemp', t); } catch (e) {}
-  const hits = data.ranges.filter(r => t >= r.min && t <= r.max);
+  const hits = data.ranges.filter(r => t >= r.min && t <= r.max).sort((a, b) => (b.max - a.max) || (b.min - a.min));
   if (!hits.length) {
     box.innerHTML = `<div class="empty">${t}℃ 에 맞는 구간이 없습니다.<br>⚙ 설정에서 구간을 추가하세요.</div>`;
     return;
@@ -214,13 +218,19 @@ async function addRange() {
   const mn = parseFloat(document.getElementById('newMin').value);
   const mx = parseFloat(document.getElementById('newMax').value);
   if (isNaN(mn) || isNaN(mx)) return alert('두 온도를 모두 입력하세요');
-  data.ranges.push({ id: Date.now(), min: Math.min(mn, mx), max: Math.max(mn, mx), photos: [] });
-  data.ranges.sort((a, b) => a.min - b.min);
+  const lo = Math.min(mn, mx), hi = Math.max(mn, mx);
+  if (data.ranges.some(r => r.min === lo && r.max === hi)) return alert(`${lo} ~ ${hi}℃ 구간은 이미 있습니다`);
+  const id = Date.now();
+  data.ranges.push({ id, min: lo, max: hi, photos: [] });
+  openId = id;
+  sortRanges();
   await save();
   document.getElementById('newMin').value = '';
   document.getElementById('newMax').value = '';
   renderSettings();
 }
+// 높은 온도 구간이 위로
+function sortRanges() { data.ranges.sort((a, b) => (b.max - a.max) || (b.min - a.min)); }
 function findRange(id) { return data.ranges.find(r => r.id === id); }
 
 async function editRange(id) {
@@ -229,7 +239,7 @@ async function editRange(id) {
   if (isNaN(mn) || isNaN(mx)) return alert('두 온도를 모두 입력하세요');
   const r = findRange(id);
   r.min = Math.min(mn, mx); r.max = Math.max(mn, mx);
-  data.ranges.sort((a, b) => a.min - b.min);
+  sortRanges();
   await save(); renderSettings();
   alert(`${r.min} ~ ${r.max}℃ 로 변경됨`);
 }
@@ -266,24 +276,32 @@ document.getElementById('photoFile').addEventListener('change', async e => {
   await save(); renderSettings();
 });
 
+let openId = null;
+function toggleRange(id) { openId = (openId === id) ? null : id; renderSettings(); }
 function renderSettings() {
   const list = document.getElementById('rangeList');
   list.innerHTML = '';
   data.ranges.forEach(r => {
     const box = document.createElement('div');
     box.className = 'rangeBox';
-    let html = `<div class="rangeHead">
-      <span class="rangeEdit"><input type="number" inputmode="decimal" id="min${r.id}" value="${r.min}"> ~
-      <input type="number" inputmode="decimal" id="max${r.id}" value="${r.max}"> ℃
-      <button class="btn" onclick="editRange(${r.id})">변경</button></span>
-      <button class="btn del" onclick="delRange(${r.id})">삭제</button></div>`;
-    r.photos.forEach((p, i) => {
-      html += `<div class="item"><img src="${p.src}"><span>${i + 1}번</span>
-        <button class="btn" onclick="movePhoto(${r.id},${i},-1)">↑</button>
-        <button class="btn" onclick="movePhoto(${r.id},${i},1)">↓</button>
-        <button class="btn del" onclick="delPhoto(${r.id},${i})">✕</button></div>`;
-    });
-    html += `<button class="btn add" onclick="pickPhotos(${r.id})">＋ 사진 추가</button>`;
+    const open = openId === r.id;
+    const thumb = r.photos.length ? `<img class="rangeThumb" src="${r.photos[0].src}">` : `<div class="rangeThumb"></div>`;
+    let html = `<div class="rangeTitleRow" onclick="toggleRange(${r.id})">
+      ${thumb}<b>${r.min} ~ ${r.max}℃</b><span>사진 ${r.photos.length}장 ${open ? '▲' : '▼'}</span></div>`;
+    if (open) {
+      html += `<div class="rangeHead">
+        <span class="rangeEdit"><input type="number" inputmode="decimal" id="min${r.id}" value="${r.min}"> ~
+        <input type="number" inputmode="decimal" id="max${r.id}" value="${r.max}"> ℃
+        <button class="btn" onclick="editRange(${r.id})">변경</button></span>
+        <button class="btn del" onclick="delRange(${r.id})">삭제</button></div>`;
+      r.photos.forEach((p, i) => {
+        html += `<div class="item"><img src="${p.src}"><span>${i + 1}번</span>
+          <button class="btn" onclick="movePhoto(${r.id},${i},-1)">↑</button>
+          <button class="btn" onclick="movePhoto(${r.id},${i},1)">↓</button>
+          <button class="btn del" onclick="delPhoto(${r.id},${i})">✕</button></div>`;
+      });
+      html += `<button class="btn add" onclick="pickPhotos(${r.id})">＋ 사진 추가</button>`;
+    }
     box.innerHTML = html;
     list.appendChild(box);
   });
@@ -345,6 +363,7 @@ function loadWeather() {
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
   await openDB();
   await load();
+  sortRanges();
   let last = null;
   try { last = localStorage.getItem('lastTemp'); } catch (e) {}
   tIn.value = (last !== null && last !== '') ? last : 10;
