@@ -101,6 +101,13 @@ header h1{font-size:18px}
 .hlab .r-ic{font-size:12px}
 .hlab .r-date{font-size:11px;font-weight:700;color:#2b8de0}
 .nc{font-size:.7em;letter-spacing:-3px}
+#wxNow{display:flex;gap:8px;padding:0 10px 8px}
+#wxNow .pl{flex:1;border:1px solid #e0e0e0;border-radius:10px;padding:6px 8px}
+#wxNow .pl.on{border:2px solid #2b8de0}
+#wxNow .nm{font-size:12px;color:#888;font-weight:700}
+#wxNow .fl{font-size:26px;font-weight:800;line-height:1.2}
+#wxNow .fl span{font-size:12px;color:#888;font-weight:600;margin-left:2px}
+#wxNow .tp{font-size:13px;color:#555}
 .hlab .r-pop{flex-direction:column;line-height:1.15}
 .hlab .r-pop small{font-size:10px;color:#2b8de0}
 .badge{background:#2b8de0;color:#fff;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700;white-space:nowrap}
@@ -126,6 +133,7 @@ header h1{font-size:18px}
     </div>
     <div class="wxTime"><span id="wxAt">불러오는 중...</span><b onclick="loadWx(true)">↻</b></div>
   </div>
+  <div id="wxNow"></div>
   <div id="wxAlert"></div>
   <div class="days" id="days"></div>
   <div class="hwrap">
@@ -441,6 +449,8 @@ async function wxApi(op, b, p) {
   if (!it) throw new Error(op);
   return it;
 }
+// 현재 날씨(초단기실황): 매시 정각 자료, 40분 이후 제공
+function baseNow() { const d = new Date(Date.now() - 40 * 60000); return { date: ymd8(d), time: pad2(d.getHours()) + '00' }; }
 function baseUltra() { const d = new Date(Date.now() - 45 * 60000); return { date: ymd8(d), time: pad2(d.getHours()) + '30' }; }
 function baseVil() {
   const d = new Date(Date.now() - 10 * 60000);
@@ -457,18 +467,24 @@ function baseDay() {
 }
 
 async function loadPlace(p) {
-  const out = { h: {}, tmx: {}, tmn: {}, popAt: null };
+  const out = { h: {}, tmx: {}, tmn: {}, popAt: null, now: null, nowAt: null };
   const add = (items, ren) => items.forEach(i => {
     const k = i.fcstDate + i.fcstTime;
     (out.h[k] = out.h[k] || {})[ren[i.category] || i.category] = i.fcstValue;
     if (i.category === 'TMX') out.tmx[i.fcstDate] = +i.fcstValue;
     if (i.category === 'TMN') out.tmn[i.fcstDate] = +i.fcstValue;
   });
-  const [a, b, c] = await Promise.allSettled([
+  const [a, b, c, n] = await Promise.allSettled([
     wxApi('getVilageFcst', baseDay(), p),
     wxApi('getVilageFcst', baseVil(), p),
-    wxApi('getUltraSrtFcst', baseUltra(), p)
+    wxApi('getUltraSrtFcst', baseUltra(), p),
+    wxApi('getUltraSrtNcst', baseNow(), p)
   ]);
+  if (n.status === 'fulfilled') {
+    out.now = {};
+    n.value.forEach(i => out.now[i.category] = +i.obsrValue);
+    out.nowAt = baseNow().time;
+  }
   if (a.status === 'fulfilled') { add(a.value, {}); out.popAt = baseDay().time; }
   if (b.status === 'fulfilled') { add(b.value, {}); out.popAt = baseVil().time; }
   if (c.status === 'fulfilled') add(c.value, { T1H: 'TMP', RN1: 'PCP' });
@@ -564,6 +580,17 @@ function renderWx(at, autoPick) {
     return { lab: ['오늘', '내일', '모레', '글피'][diff] || '', txt: `${dd.getDate()}일(${'일월화수목금토'[dd.getDay()]})` };
   };
   const W = WX[place];
+  // --- 지금 날씨 (두 곳) ---
+  document.getElementById('wxNow').innerHTML = WX.map((w, i) => {
+    const n = w.now;
+    if (!n || n.T1H == null) return `<div class="pl ${i === place ? 'on' : ''}"><div class="nm">${PLACES[i].name} 지금</div><div class="tp">자료 없음</div></div>`;
+    const f = feel(n.T1H, n.WSD || 0, n.REH, now.getMonth() + 1);
+    const rain = n.PTY > 0 ? ` · ${PTYT[n.PTY]}${n.RN1 ? ' ' + n.RN1 + 'mm' : ''}` : '';
+    return `<div class="pl ${i === place ? 'on' : ''}" onclick="setPlace(${i})">
+      <div class="nm">${PLACES[i].name} 지금 (${+w.nowAt.substr(0, 2)}시)</div>
+      <div class="fl">${f.toFixed(1)}°<span>체감</span></div>
+      <div class="tp">기온 ${n.T1H.toFixed(1)}° · 바람 ${n.WSD}m/s${rain}</div></div>`;
+  }).join('');
   document.getElementById('popLab').innerHTML = W.popAt ? `강수확률<small>${+W.popAt.substr(0, 2)}시 발표</small>` : '강수확률';
   const keys = hourList();
   const infos = {}; keys.forEach(k => infos[k] = info(k));
