@@ -183,6 +183,7 @@ function show() {
   const t = parseFloat(tIn.value);
   box.innerHTML = '';
   if (isNaN(t)) { box.innerHTML = '<div class="empty">온도를 입력하세요</div>'; return; }
+  try { localStorage.setItem('lastTemp', t); } catch (e) {}
   const hits = data.ranges.filter(r => t >= r.min && t <= r.max);
   if (!hits.length) {
     box.innerHTML = `<div class="empty">${t}℃ 에 맞는 구간이 없습니다.<br>⚙ 설정에서 구간을 추가하세요.</div>`;
@@ -364,7 +365,9 @@ function loadWeather() {
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
   await openDB();
   await load();
-  tIn.value = data.defaultTemp;
+  let last = null;
+  try { last = localStorage.getItem('lastTemp'); } catch (e) {}
+  tIn.value = (last !== null && last !== '') ? last : data.defaultTemp;
   show();
   loadWeather();
 })();
