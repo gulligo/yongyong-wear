@@ -698,7 +698,7 @@ async function loadWx(force) {
     try {
       const c = JSON.parse(localStorage.getItem('wearWx2') || 'null');
       if (c) { WX = c.d; renderWx(new Date(c.at), !selKey); }
-      if (c && Date.now() - c.at < 10 * 60000) return;
+      if (c && Date.now() - c.at < 5 * 60000) return;
     } catch (e) {}
   }
   document.getElementById('wxAt').textContent = '불러오는 중...';
@@ -762,7 +762,7 @@ function renderWx(at, autoPick) {
     return `<div class="pl ${i === place ? 'on' : ''}" onclick="setPlace(${i})">
       <div class="nm">${PLACES[i].name} 지금 (${nowAt})</div>
       <div class="fl">${f.toFixed(1)}°<span>체감</span></div>
-      <div class="tp">기온 ${n.T1H.toFixed(1)}° · 바람 ${n.WDIR ? n.WDIR + ' ' : ''}${n.WSD}m/s${rain}</div></div>`;
+      <div class="tp">기온 ${n.T1H.toFixed(1)}° · 바람 ${n.WDIR === null && !n.WSD ? '-' : (n.WDIR ? n.WDIR + ' ' : '') + n.WSD + 'm/s'}${rain}</div></div>`;
   }).join('');
   document.getElementById('popLab').innerHTML = W.popAt ? `강수확률<small>${+W.popAt.substr(0, 2)}시 발표</small>` : '강수확률';
   const keys = hourList();
@@ -839,7 +839,7 @@ function renderWx(at, autoPick) {
       <div class="r-fl">${Math.round(x.feel)}°</div>
       <div class="r-pop">${x.pop == null ? '' : x.pop + '%'}</div>
       <div class="r-pcp">${pcpTx(x.v.PCP)}</div>
-      <div class="r-wd ${x.w >= WIND_WARN ? 'strong' : ''}"><span>${x.v.WDIR ? x.v.WDIR.replace(/풍$/, '') : isNaN(vec) ? '' : dirTx(vec)}</span><span>${x.w}m/s</span></div>
+      <div class="r-wd ${x.w >= WIND_WARN ? 'strong' : ''}">${x.v.WDIR === null ? '<span>-</span>' : `<span>${x.v.WDIR ? x.v.WDIR.replace(/풍$/, '') : isNaN(vec) ? '' : dirTx(vec)}</span><span>${x.w}m/s</span>`}</div>
     </div>`;
   }).join('');
 
@@ -903,8 +903,8 @@ function showAuto(k, colder) {
   loadWx(false);
 })();
 document.addEventListener('visibilitychange', () => { if (!document.hidden) loadWx(false); });
-// 앱을 켜둔 상태에서도 10분마다 새로 받아오기
-setInterval(() => { if (!document.hidden) loadWx(true); }, 10 * 60000);
+// 앱을 켜둔 상태에서도 5분마다 새로 받아오기
+setInterval(() => { if (!document.hidden) loadWx(true); }, 5 * 60000);
 // 옆으로 넘길 때 왼쪽에 지금 보이는 날짜 표시
 function updCurDate() {
   const cols = document.querySelectorAll('.hcol');
