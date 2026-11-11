@@ -553,7 +553,10 @@ document.getElementById('importFile').addEventListener('change', async e => {
 
 // ===== 날씨 (기상청 단기예보) =====
 const WX_KEY = '%2BEh8kbFd9hpLu1HNrPktRwJmihJIlWkCQ0YQ3JTiiaQrPCUydm4o8AR71ASjakiseukq%2BjGF0UJufZm89REMeQ%3D%3D';
-const PLACES = [{ name: '옥산', nx: 67, ny: 107 }, { name: '송정동', nx: 68, ny: 107 }];
+// code = 날씨누리 지역 코드, nx·ny = 공개 API 격자 (날씨누리가 안 될 때 사용)
+const PLACES = [{ name: '옥산', code: '4311332000', nx: 67, ny: 107 }, { name: '송정동', code: '4311377000', nx: 68, ny: 107 }];
+// 날씨누리 자료를 받아 주는 Worker 주소
+const NURI = 'https://nuri-test.86400seccc.workers.dev/';
 const COMMUTE = [6, 14, 18, 22];   // 출퇴근 시각
 const RIDE_KMH = 20;               // 자전거 평소 속도
 const WIND_WARN = 7;               // 강풍 경고 (m/s)
@@ -589,8 +592,51 @@ function baseDay() {
   return { date: ymd8(d), time: '2300' };
 }
 
+// 날씨누리 하늘 글자 → 앱 기호 (SKY 1 맑음, 3 구름많음, 4 흐림 / PTY 비·눈 종류)
+function skyFromText(t) {
+  t = t || '';
+  if (t.includes('진눈깨비') || (t.includes('빗방울') && t.includes('눈날림'))) return { PTY: 6 };
+  if (t.includes('소나기')) return { PTY: 4 };
+  if (t.includes('빗방울')) return { PTY: 5 };
+  if (t.includes('눈날림')) return { PTY: 7 };
+  if (t.includes('비') && t.includes('눈')) return { PTY: 2 };
+  if (t.includes('눈')) return { PTY: 3 };
+  if (t.includes('비')) return { PTY: 1 };
+  if (t.includes('흐림')) return { PTY: 0, SKY: 4 };
+  if (t.includes('구름')) return { PTY: 0, SKY: 3 };
+  if (t.includes('맑음')) return { PTY: 0, SKY: 1 };
+  return { PTY: 0 };
+}
+
+// 날씨누리 (Worker 통해서) — 날씨누리와 같은 숫자
+async function loadNuri(p) {
+  const r = await fetch(`${NURI}?code=${p.code}`);
+  const j = await r.json();
+  if (!j.ok || !j.hours || !j.hours.length) throw new Error(j.error || 'nuri');
+  const out = { src: 'nuri', h: {}, tmx: {}, tmn: {}, popAt: null, now: null, nowAt: null, days: j.days || [] };
+  j.hours.forEach(x => {
+    const k = x.date.replace(/-/g, '') + x.time.replace(':', '');
+    out.h[k] = { ...skyFromText(x.sky), TMP: x.tmp, FEEL: x.feel, POP: x.pop, WSD: x.wsd, WDIR: x.wdir, REH: x.reh, PCP: x.pcp };
+  });
+  out.days.forEach(d => {
+    const k = d.date.replace(/-/g, '');
+    if (d.tmin != null) out.tmn[k] = d.tmin;
+    if (d.tmax != null) out.tmx[k] = d.tmax;
+  });
+  const t = j.issued && j.issued.short && j.issued.short.match(/(\d{2}):\d{2}/);
+  if (t) out.popAt = t[1] + '00';
+  if (j.now && j.now.tmp != null) {
+    const n = j.now;
+    out.now = { T1H: n.tmp, FEEL: n.feel, WSD: n.wsd || 0, WDIR: n.wdir, REH: n.reh, PTY: 0, RN1: n.rn1 && n.rn1 !== '-' ? n.rn1 : 0 };
+    const a = (n.at || '').match(/(\d{2}):(\d{2})/);
+    out.nowAtText = a ? `${+a[1]}:${a[2]}` : '';
+  }
+  return out;
+}
+
 async function loadPlace(p) {
-  const out = { h: {}, tmx: {}, tmn: {}, popAt: null, now: null, nowAt: null };
+  try { return await loadNuri(p); } catch (e) { /* 날씨누리 실패 → 공개 API */ }
+  const out = { src: 'api', h: {}, tmx: {}, tmn: {}, popAt: null, now: null, nowAt: null };
   const add = (items, ren) => items.forEach(i => {
     const k = i.fcstDate + i.fcstTime;
     (out.h[k] = out.h[k] || {})[ren[i.category] || i.category] = i.fcstValue;
@@ -650,7 +696,7 @@ function pcpTx(v) { if (!v || v === '강수없음' || v === '0') return '-'; ret
 async function loadWx(force) {
   if (!force) {
     try {
-      const c = JSON.parse(localStorage.getItem('wearWx') || 'null');
+      const c = JSON.parse(localStorage.getItem('wearWx2') || 'null');
       if (c) { WX = c.d; renderWx(new Date(c.at), !selKey); }
       if (c && Date.now() - c.at < 10 * 60000) return;
     } catch (e) {}
@@ -658,7 +704,7 @@ async function loadWx(force) {
   document.getElementById('wxAt').textContent = '불러오는 중...';
   try {
     WX = await Promise.all(PLACES.map(loadPlace));
-    try { localStorage.setItem('wearWx', JSON.stringify({ at: Date.now(), d: WX })); } catch (e) {}
+    try { localStorage.setItem('wearWx2', JSON.stringify({ at: Date.now(), d: WX })); } catch (e) {}
     renderWx(new Date(), !selKey);
   } catch (e) {
     document.getElementById('wxAt').textContent = '날씨를 불러오지 못했습니다';
@@ -684,7 +730,7 @@ function info(k) {
   const mon = +k.substr(4, 2);
   return vs.map(v => {
     const t = +v.TMP, w = +v.WSD || 0, rh = +v.REH;
-    return { v, t, w, rh, feel: feel(t, w, rh, mon), ride: ride(t, w), pop: v.POP != null ? +v.POP : null, pty: +v.PTY || 0 };
+    return { v, t, w, rh, feel: v.FEEL != null ? +v.FEEL : feel(t, w, rh, mon), ride: ride(t, w), pop: v.POP != null ? +v.POP : null, pty: +v.PTY || 0 };
   });
 }
 const isBad = x => x.pty > 0 || (x.pop != null && x.pop >= POP_WARN) || x.w >= WIND_WARN;
@@ -695,7 +741,10 @@ const shiftK = (k, d) => {
 
 function renderWx(at, autoPick) {
   if (!WX) return;
-  if (at) document.getElementById('wxAt').textContent = `${pad2(at.getHours())}:${pad2(at.getMinutes())} 기상청`;
+  if (at) {
+    const src = WX.every(w => w.src === 'nuri') ? '날씨누리' : WX.some(w => w.src === 'nuri') ? '날씨누리·공개API' : '공개API (날씨누리 연결 안 됨)';
+    document.getElementById('wxAt').textContent = `${pad2(at.getHours())}:${pad2(at.getMinutes())} ${src}`;
+  }
   const now = new Date();
   const dayName = d8 => {
     const dd = new Date(+d8.substr(0, 4), +d8.substr(4, 2) - 1, +d8.substr(6, 2));
@@ -707,12 +756,13 @@ function renderWx(at, autoPick) {
   document.getElementById('wxNow').innerHTML = WX.map((w, i) => {
     const n = w.now;
     if (!n || n.T1H == null) return `<div class="pl ${i === place ? 'on' : ''}"><div class="nm">${PLACES[i].name} 지금</div><div class="tp">자료 없음</div></div>`;
-    const f = feel(n.T1H, n.WSD || 0, n.REH, now.getMonth() + 1);
+    const f = n.FEEL != null ? n.FEEL : feel(n.T1H, n.WSD || 0, n.REH, now.getMonth() + 1);
+    const nowAt = w.nowAtText || (w.nowAt ? +w.nowAt.substr(0, 2) + '시' : '');
     const rain = n.PTY > 0 ? ` · ${PTYT[n.PTY]}${n.RN1 ? ' ' + n.RN1 + 'mm' : ''}` : '';
     return `<div class="pl ${i === place ? 'on' : ''}" onclick="setPlace(${i})">
-      <div class="nm">${PLACES[i].name} 지금 (${+w.nowAt.substr(0, 2)}시)</div>
+      <div class="nm">${PLACES[i].name} 지금 (${nowAt})</div>
       <div class="fl">${f.toFixed(1)}°<span>체감</span></div>
-      <div class="tp">기온 ${n.T1H.toFixed(1)}° · 바람 ${n.WSD}m/s${rain}</div></div>`;
+      <div class="tp">기온 ${n.T1H.toFixed(1)}° · 바람 ${n.WDIR ? n.WDIR + ' ' : ''}${n.WSD}m/s${rain}</div></div>`;
   }).join('');
   document.getElementById('popLab').innerHTML = W.popAt ? `강수확률<small>${+W.popAt.substr(0, 2)}시 발표</small>` : '강수확률';
   const keys = hourList();
@@ -725,7 +775,13 @@ function renderWx(at, autoPick) {
     // 오전(0~11시)/오후(12~23시): 날씨누리처럼 지난 시간은 빼고,
     // 하늘은 가장 많이 나온 상태, 강수확률은 평균을 10% 단위로 반올림
     const cur = ymd8(now) + pad2(now.getHours()) + '00';
+    // 날씨누리 자료가 있으면 날씨누리 요약을 그대로 사용
+    const nd = (W.days || []).find(x => x.date.replace(/-/g, '') === d);
     const half = am => {
+      if (nd) {
+        const sky = am ? nd.amSky : nd.pmSky, pop = am ? nd.amPop : nd.pmPop;
+        return { ic: sky ? wIcon(skyFromText(sky), am ? 9 : 15) : '-', pop: pop == null ? '-' : pop + '%' };
+      }
       const ks = hs.filter(k => (am ? +k.substr(8, 2) < 12 : +k.substr(8, 2) >= 12) && k >= cur);
       if (!ks.length) return { ic: '-', pop: '-' };
       const rain = ks.map(k => +W.h[k].PTY || 0).filter(x => x > 0);
@@ -783,7 +839,7 @@ function renderWx(at, autoPick) {
       <div class="r-fl">${Math.round(x.feel)}°</div>
       <div class="r-pop">${x.pop == null ? '' : x.pop + '%'}</div>
       <div class="r-pcp">${pcpTx(x.v.PCP)}</div>
-      <div class="r-wd ${x.w >= WIND_WARN ? 'strong' : ''}"><span>${isNaN(vec) ? '' : dirTx(vec)}</span><span>${x.w}m/s</span></div>
+      <div class="r-wd ${x.w >= WIND_WARN ? 'strong' : ''}"><span>${x.v.WDIR ? x.v.WDIR.replace(/풍$/, '') : isNaN(vec) ? '' : dirTx(vec)}</span><span>${x.w}m/s</span></div>
     </div>`;
   }).join('');
 
