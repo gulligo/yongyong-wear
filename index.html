@@ -61,6 +61,29 @@ header h1{font-size:18px}
 .menuBox div{margin:8px 0 12px;font-weight:700}
 .menuBox button{display:block;width:100%;padding:13px;margin-bottom:8px;font-size:16px}
 
+/* ===== 설정: 사진 펼쳐보기 / 미리보기 / 가져오기 ===== */
+.thumbs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:8px}
+.thumbs .th{position:relative}
+.thumbs img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;display:block}
+.thumbs .th b{position:absolute;top:3px;left:3px;background:rgba(0,0,0,.6);color:#fff;border-radius:8px;padding:0 6px;font-size:11px}
+.thumbs .none{grid-column:1/-1;color:#999;font-size:13px;text-align:center;padding:10px 0}
+.fold{background:none;border:none;color:#2b8de0;font-size:13px;font-weight:700;padding:4px 0}
+.imp{background:#eaf4fd;border-color:#b6d8f5;color:#2b8de0;width:100%;margin-top:6px;padding:9px}
+#picker{display:none;position:fixed;inset:0;background:#f2f2f2;z-index:15;flex-direction:column}
+#picker .pkHead{background:#fff;padding:12px 14px;border-bottom:1px solid #e0e0e0;font-size:17px;font-weight:700}
+#picker .pkHead small{display:block;font-size:12px;color:#888;font-weight:500;margin-top:2px}
+#pkBody{flex:1;overflow-y:auto;padding:0 10px 10px}
+#pkBody h3{font-size:14px;color:#d35400;margin:12px 0 0}
+#pkBody .th{cursor:pointer}
+#pkBody .th.off img{opacity:.3}
+#pkBody .th.on img{outline:3px solid #2b8de0;outline-offset:-3px}
+#pkBody .th .ck{position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:#fff;border:2px solid #bbb;font-size:13px;line-height:18px;text-align:center;color:#fff;font-weight:800}
+#pkBody .th.on .ck{background:#2b8de0;border-color:#2b8de0}
+#picker .pkFoot{display:flex;gap:8px;padding:10px;background:#fff;border-top:1px solid #e0e0e0}
+#picker .pkFoot .btn{flex:1;padding:12px;font-size:16px}
+#pkOk{background:#2b8de0;color:#fff;border-color:#2b8de0}
+#pkOk:disabled{opacity:.4}
+
 /* ===== 날씨 ===== */
 #wx{background:#fff;margin:10px 10px 0;border-radius:12px;padding:10px 0 8px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
 .wxTop{display:flex;justify-content:space-between;align-items:center;padding:0 10px 8px}
@@ -166,6 +189,7 @@ header h1{font-size:18px}
 <div id="menu" onclick="if(event.target===this)closeMenu()">
   <div class="menuBox">
     <img id="menuImg"><div id="menuTitle"></div>
+    <button class="btn" onclick="menuView()">🔍 크게 보기</button>
     <button class="btn" onclick="menuMove(-1)">↑ 앞으로</button>
     <button class="btn" onclick="menuMove(1)">↓ 뒤로</button>
     <button class="btn del" onclick="menuDel()">삭제</button>
@@ -197,6 +221,15 @@ header h1{font-size:18px}
       <button class="btn" onclick="exportData()">백업 파일 저장</button>
       <button class="btn" onclick="document.getElementById('importFile').click()">백업 불러오기</button>
     </div>
+  </div>
+</div>
+
+<div id="picker">
+  <div class="pkHead"><span id="pkTitle"></span><small id="pkSub"></small></div>
+  <div id="pkBody"></div>
+  <div class="pkFoot">
+    <button class="btn" onclick="closePicker()">취소</button>
+    <button class="btn" id="pkOk" onclick="pickerOk()">넣기</button>
   </div>
 </div>
 
@@ -314,17 +347,23 @@ function drawMenu() {
   document.getElementById('menuTitle').textContent = `${menuI + 1}번 / ${ph.length}장`;
 }
 function closeMenu() { document.getElementById('menu').style.display = 'none'; }
+function refreshAll() { show(); if (document.getElementById('settings').style.display === 'block') renderSettings(); }
+function menuView() {
+  document.getElementById('viewImg').src = findRange(menuR).photos[menuI].src;
+  closeMenu();
+  document.getElementById('viewer').style.display = 'flex';
+}
 async function menuMove(d) {
   const ph = findRange(menuR).photos, j = menuI + d;
   if (j < 0 || j >= ph.length) return;
   [ph[menuI], ph[j]] = [ph[j], ph[menuI]];
   menuI = j;
-  await save(); show(); drawMenu();
+  await save(); refreshAll(); drawMenu();
 }
 async function menuDel() {
   if (!confirm('이 사진을 삭제할까요?')) return;
   findRange(menuR).photos.splice(menuI, 1);
-  await save(); closeMenu(); show();
+  await save(); closeMenu(); refreshAll();
 }
 
 // ===== 설정 =====
@@ -378,14 +417,77 @@ document.getElementById('photoFile').addEventListener('change', async e => {
   const files = [...e.target.files];
   e.target.value = '';
   if (!files.length || addTarget === null) return;
-  const r = findRange(addTarget);
+  const items = [];
   for (const f of files) {
-    try { r.photos.push({ src: await resize(f) }); } catch (err) { alert('사진을 읽지 못했습니다'); }
+    try { items.push({ src: await resize(f), on: true }); } catch (err) { alert('사진을 읽지 못했습니다'); }
   }
-  await save(); renderSettings();
+  if (!items.length) return;
+  const r = findRange(addTarget);
+  openPicker(`${r.min} ~ ${r.max}℃ 에 넣을 사진`, '누르면 빼거나 다시 넣을 수 있습니다',
+    [{ title: '', items }]);
 });
 
+// ===== 선택 화면 (미리보기 / 다른 구간에서 가져오기 공용) =====
+let pkGroups = [];
+function openPicker(title, sub, groups) {
+  pkGroups = groups;
+  document.getElementById('pkTitle').textContent = title;
+  document.getElementById('pkSub').textContent = sub;
+  drawPicker();
+  document.getElementById('picker').style.display = 'flex';
+}
+function drawPicker() {
+  const body = document.getElementById('pkBody');
+  body.innerHTML = '';
+  pkGroups.forEach((g, gi) => {
+    if (g.title) {
+      const h = document.createElement('h3');
+      h.textContent = g.title;
+      body.appendChild(h);
+    }
+    const grid = document.createElement('div');
+    grid.className = 'thumbs';
+    g.items.forEach((it, ii) => {
+      const d = document.createElement('div');
+      d.className = 'th ' + (it.on ? 'on' : 'off');
+      d.innerHTML = `<img src="${it.src}"><span class="ck">${it.on ? '✓' : ''}</span>`;
+      d.onclick = () => { it.on = !it.on; drawPicker(); };
+      grid.appendChild(d);
+    });
+    body.appendChild(grid);
+  });
+  const n = pkGroups.reduce((a, g) => a + g.items.filter(x => x.on).length, 0);
+  const ok = document.getElementById('pkOk');
+  ok.textContent = n ? `${n}장 넣기` : '넣기';
+  ok.disabled = !n;
+}
+function closePicker() { document.getElementById('picker').style.display = 'none'; pkGroups = []; }
+async function pickerOk() {
+  const r = findRange(addTarget);
+  const sel = pkGroups.flatMap(g => g.items.filter(x => x.on));
+  if (!r || !sel.length) return;
+  sel.forEach(x => r.photos.push({ src: x.src }));
+  await save();
+  closePicker();
+  openRanges.add(r.id);
+  renderSettings();
+}
+
+// 다른 구간 사진 가져오기 (복사)
+function importFrom(id) {
+  addTarget = id;
+  const r = findRange(id);
+  const groups = data.ranges.filter(x => x.id !== id && x.photos.length)
+    .map(x => ({ title: `${x.min} ~ ${x.max}℃ (${x.photos.length}장)`, items: x.photos.map(p => ({ src: p.src, on: false })) }));
+  if (!groups.length) return alert('가져올 수 있는 다른 구간 사진이 없습니다');
+  openPicker(`${r.min} ~ ${r.max}℃ 로 가져오기`, '넣을 사진을 눌러 고르세요 (원래 구간 사진은 그대로 남습니다)', groups);
+}
+
+// 펼쳐 둔 구간 (처음엔 모두 펼침)
+const openRanges = new Set();
+let openInit = false;
 function renderSettings() {
+  if (!openInit) { data.ranges.forEach(r => openRanges.add(r.id)); openInit = true; }
   const list = document.getElementById('rangeList');
   list.innerHTML = '';
   data.ranges.forEach(r => {
@@ -400,7 +502,28 @@ function renderSettings() {
         <button class="btn" onclick="editRange(${r.id})">변경</button>
         <button class="btn del" onclick="delRange(${r.id})">삭제</button>
         <button class="btn add" onclick="pickPhotos(${r.id})">＋사진</button>
-      </div>`;
+      </div>
+      <button class="btn imp" onclick="importFrom(${r.id})">📂 다른 구간에서 가져오기</button>`;
+    // 사진 펼쳐보기 / 접기
+    const open = openRanges.has(r.id);
+    const fold = document.createElement('button');
+    fold.className = 'fold';
+    fold.textContent = open ? `▲ 사진 접기 (${r.photos.length}장)` : `▼ 사진 펼쳐보기 (${r.photos.length}장)`;
+    fold.onclick = () => { open ? openRanges.delete(r.id) : openRanges.add(r.id); renderSettings(); };
+    box.appendChild(fold);
+    if (open) {
+      const grid = document.createElement('div');
+      grid.className = 'thumbs';
+      if (!r.photos.length) grid.innerHTML = '<div class="none">사진이 없습니다</div>';
+      r.photos.forEach((p, i) => {
+        const d = document.createElement('div');
+        d.className = 'th';
+        d.innerHTML = `<img src="${p.src}"><b>${i + 1}</b>`;
+        d.onclick = () => openMenu(r.id, i);
+        grid.appendChild(d);
+      });
+      box.appendChild(grid);
+    }
     list.appendChild(box);
   });
 }
