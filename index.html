@@ -148,6 +148,21 @@ header h1{font-size:18px}
 .hcol .r-pm small{font-size:9px;color:#555;white-space:nowrap;letter-spacing:-.5px}
 .pmLg{display:flex;flex-wrap:wrap;gap:3px;padding:6px 10px 0;font-size:10px}
 .pmLg span{color:#fff;border-radius:4px;padding:1px 5px}
+/* 비구름 (레이더) */
+#rdr{background:#fff;margin:10px 10px 0;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden}
+#rdrBtn{display:flex;justify-content:space-between;align-items:center;width:100%;border:none;background:#fff;padding:12px 14px;font-size:15px;font-weight:700;color:#2b8de0}
+#rdrBody{display:none}
+#rdrMap{position:relative;height:360px;overflow:auto;background:#222;touch-action:pan-x pan-y}
+#rdrBox{position:relative;width:300%}
+#rdrImg{width:100%;display:block;user-select:none;-webkit-user-select:none}
+.rdrDot{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 2px rgba(0,0,0,.4)}
+.rdrDot b{position:absolute;top:-4px;font-size:11px;color:#fff;background:rgba(0,0,0,.55);padding:0 4px;border-radius:4px;white-space:nowrap}
+#rdrZoom{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:5px;z-index:2}
+#rdrZoom button{width:34px;height:34px;border:1px solid #ccc;border-radius:6px;background:#fff;font-size:18px;font-weight:700}
+#rdrTime{text-align:center;font-size:14px;font-weight:700;padding:8px 0 2px}
+#rdrSlider{width:calc(100% - 28px);margin:4px 14px}
+.rdrCtl{display:flex;justify-content:center;gap:10px;padding:4px 0 12px}
+.rdrCtl button{width:60px;height:38px;border:1px solid #ccc;border-radius:8px;background:#fff;font-size:16px}
 </style>
 </head>
 <body>
@@ -187,6 +202,23 @@ header h1{font-size:18px}
   <div class="pmLg" id="pmLg"></div>
   <div class="wxNote">시간을 누르면 그 시간 체감온도로 옷이 바뀝니다 · 보라 = 출퇴근 · 빨강 = 비·눈·강풍·초미세 나쁨 이상<br>초미세 예보 = CAMS 모델 예측을 지금 측정값으로 보정한 값</div>
   <div id="autoInfo"></div>
+</div>
+
+<div id="rdr">
+  <button id="rdrBtn" onclick="toggleRadar()"><span>☔ 비구름 보기</span><span id="rdrArrow">▼</span></button>
+  <div id="rdrBody">
+    <div style="position:relative">
+      <div id="rdrZoom"><button onclick="rdrZoomStep(1)">+</button><button onclick="rdrZoomStep(-1)">−</button></div>
+      <div id="rdrMap"><div id="rdrBox"><img id="rdrImg" alt="레이더"></div></div>
+    </div>
+    <div id="rdrTime"></div>
+    <input type="range" id="rdrSlider" min="0" max="0" value="0" oninput="rdrShow(+this.value)">
+    <div class="rdrCtl">
+      <button onclick="rdrShow(Math.max(0, rdrI - 1))">◀</button>
+      <button id="rdrPlay" onclick="rdrToggle()">▶</button>
+      <button onclick="rdrShow(Math.min(rdrF.length - 1, rdrI + 1))">▶▶</button>
+    </div>
+  </div>
 </div>
 
 <div class="main">
@@ -1032,6 +1064,72 @@ function updCurDate() {
   document.getElementById('curDate').textContent = `${+k.substr(6, 2)}일`;
 }
 document.getElementById('hscroll').addEventListener('scroll', updCurDate);
+
+// ===== 비구름 보기 (기상청 레이더, 용용이비구름과 같은 이미지) =====
+// 레이더 이미지(635x620)에서 (경도126, 위도36) 위치와 1도당 픽셀
+const RDR = { w: 635, h: 620, x0: 257, y0: 296, pxLon: 52, pxLat: 63.75 };
+const rdrX = lon => (RDR.x0 + (lon - 126) * RDR.pxLon) / RDR.w * 100;
+const rdrY = lat => (RDR.y0 + (36 - lat) * RDR.pxLat) / RDR.h * 100;
+let rdrF = [], rdrI = 0, rdrTimer = null, rdrZ = 2, rdrOpened = false;
+const RDR_Z = [100, 200, 300, 400, 550];
+
+function rdrFrames() {
+  const f = [];
+  let t = new Date(Date.now() - 10 * 60000);        // 최신 이미지는 5~10분 늦게 올라옴
+  t.setMinutes(t.getMinutes() - t.getMinutes() % 5, 0, 0);
+  for (let i = 23; i >= 0; i--) {                   // 최근 2시간, 5분 간격
+    const d = new Date(t.getTime() - i * 5 * 60000);
+    const tm = `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}${pad2(d.getHours())}${pad2(d.getMinutes())}`;
+    f.push({ url: `https://www.kma.go.kr/repositary/image/rdr/img/RDR_CMP_WRC_${tm}.png`, label: `${d.getDate()}일 ${pad2(d.getHours())}:${pad2(d.getMinutes())}` });
+  }
+  return f;
+}
+function rdrShow(i) {
+  rdrI = i;
+  document.getElementById('rdrImg').src = rdrF[i].url;
+  document.getElementById('rdrTime').textContent = rdrF[i].label + (i === rdrF.length - 1 ? ' (최신)' : '');
+  document.getElementById('rdrSlider').value = i;
+}
+// 아직 안 올라온 시간 이미지는 그 전 것으로
+document.getElementById('rdrImg').onerror = () => { if (rdrI > 0) rdrShow(rdrI - 1); };
+function rdrToggle() {
+  const b = document.getElementById('rdrPlay');
+  if (rdrTimer) { clearInterval(rdrTimer); rdrTimer = null; b.textContent = '▶'; return; }
+  b.textContent = '❚❚';
+  rdrTimer = setInterval(() => rdrShow((rdrI + 1) % rdrF.length), 700);
+}
+// 집·회사가 가운데 오게
+function rdrCenter() {
+  const m = document.getElementById('rdrMap'), box = document.getElementById('rdrBox');
+  const cx = (rdrX(PLACES[0].lon) + rdrX(PLACES[1].lon)) / 2 / 100, cy = (rdrY(PLACES[0].lat) + rdrY(PLACES[1].lat)) / 2 / 100;
+  m.scrollLeft = box.offsetWidth * cx - m.clientWidth / 2;
+  m.scrollTop = box.offsetHeight * cy - m.clientHeight / 2;
+}
+function rdrZoomStep(d) {
+  rdrZ = Math.min(RDR_Z.length - 1, Math.max(0, rdrZ + d));
+  document.getElementById('rdrBox').style.width = RDR_Z[rdrZ] + '%';
+  rdrCenter();
+}
+function toggleRadar() {
+  const body = document.getElementById('rdrBody');
+  const open = body.style.display !== 'block';
+  body.style.display = open ? 'block' : 'none';
+  document.getElementById('rdrArrow').textContent = open ? '▲' : '▼';
+  if (!open) { if (rdrTimer) rdrToggle(); return; }
+  // 열 때마다 최신 시간으로 다시 만들기
+  rdrF = rdrFrames();
+  const sl = document.getElementById('rdrSlider');
+  sl.max = rdrF.length - 1;
+  if (!rdrOpened) {
+    rdrOpened = true;
+    const box = document.getElementById('rdrBox');
+    box.style.width = RDR_Z[rdrZ] + '%';
+    PLACES.forEach((p, i) => box.insertAdjacentHTML('beforeend',
+      `<div class="rdrDot" style="left:${rdrX(p.lon)}%;top:${rdrY(p.lat)}%;background:${i ? '#ff9800' : '#2b8de0'}"><b style="${i ? 'left:12px' : 'right:12px'}">${p.name}</b></div>`));
+    document.getElementById('rdrImg').addEventListener('load', () => { if (!rdrCenter.done) { rdrCenter(); rdrCenter.done = true; } });
+  }
+  rdrShow(rdrF.length - 1);
+}
 
 // 시작 화면 1.5초 후 사라짐
 setTimeout(() => {
