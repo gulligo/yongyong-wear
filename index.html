@@ -883,32 +883,56 @@ function renderWx(at, autoPick) {
   }).join('');
 
   // --- 출퇴근 경고 (두 곳 모두, 앞뒤 1시간) ---
-  const badC = {}, alerts = [];
+  // ☂️ 비·눈·강풍 줄 / 😷 초미세먼지 줄 을 따로 짧게 표시
+  const badC = {}, wxA = [], pmA = [];
   keys.filter(k => COMMUTE.includes(+k.substr(8, 2))).forEach(k => {
+    const day = dayName(k.substr(0, 8)).lab, hr = +k.substr(8, 2);
+    // 비·눈·강풍
     const around = [-1, 0, 1].map(d => infos[shiftK(k, d)]).filter(Boolean).flat();
-    const pms = PMF.map(f => f[k]).filter(v => v != null);
-    const pmMax = pms.length ? Math.max(...pms) : null;
-    const dustBad = pmMax != null && pmMax >= PM_WARN;
-    if (!around.some(isBad) && !dustBad) return;
-    badC[k] = true;
-    const what = [];
-    const pty = around.map(x => x.pty).find(x => x > 0);
-    const pop = Math.max(...around.map(x => x.pop || 0));
-    if (pty) what.push(PTYT[pty]); else if (pop >= POP_WARN) what.push(`비 ${pop}%`);
-    const w = Math.max(...around.map(x => x.w));
-    if (w >= WIND_WARN) what.push(`바람 ${w}m/s`);
-    if (dustBad) what.push(`초미세 ${pmGrade(pmMax).name} · 마스크`);
-    alerts.push({ day: dayName(k.substr(0, 8)).lab, hr: +k.substr(8, 2), what: what.join(', ') });
+    if (around.some(isBad)) {
+      badC[k] = true;
+      const what = [];
+      const pty = around.map(x => x.pty).find(x => x > 0);
+      const pop = Math.max(...around.map(x => x.pop || 0));
+      if (pty) what.push(PTYT[pty]); else if (pop >= POP_WARN) what.push(`비 ${pop}%`);
+      const w = Math.max(...around.map(x => x.w));
+      if (w >= WIND_WARN) what.push(`바람 ${w}m/s`);
+      if (what.length) wxA.push({ day, hr, what: what.join(', ') });
+    }
+    // 초미세먼지: 두 곳 중 더 나쁜 쪽, 등급이 다르면 지역 이름 붙임
+    const vals = PMF.map(f => f[k]);
+    const ok = vals.filter(v => v != null);
+    if (ok.length) {
+      const mx = Math.max(...ok);
+      if (mx >= PM_WARN) {
+        badC[k] = true;
+        const g = pmGrade(mx).name;
+        const grades = vals.map(v => v == null ? null : pmGrade(v).name);
+        const who = grades.filter(x => x).every(x => x === g) ? '' : `(${PLACES[vals.indexOf(mx)].name.replace(/동$/, '')})`;
+        pmA.push({ day, hr, txt: g + who });
+      }
+    }
   });
+  // 같은 날·같은 내용 묶기: '모레 6·14·18시 비'
+  const wxG = [];
+  wxA.forEach(a => {
+    const g = wxG.find(x => x.day === a.day && x.what === a.what);
+    g ? g.hrs.push(a.hr) : wxG.push({ day: a.day, what: a.what, hrs: [a.hr] });
+  });
+  // 미세먼지: 날짜별로 한 번만, 시간마다 등급 (연달아 같은 등급은 묶기)
+  const pmG = [];
+  pmA.forEach(a => {
+    let d = pmG.find(x => x.day === a.day);
+    if (!d) pmG.push(d = { day: a.day, parts: [] });
+    const last = d.parts[d.parts.length - 1];
+    last && last.txt === a.txt ? last.hrs.push(a.hr) : d.parts.push({ txt: a.txt, hrs: [a.hr] });
+  });
+  const lines = [];
+  if (wxG.length) lines.push('☂️ ' + wxG.map(g => `${g.day} ${g.hrs.join('·')}시 ${g.what}`).join(' / '));
+  if (pmG.length) lines.push('😷 ' + pmG.map(d => d.day + ' ' + d.parts.map(p => `${p.hrs.join('·')}시 ${p.txt}`).join(' · ')).join(' / '));
   const al = document.getElementById('wxAlert');
-  al.className = alerts.length ? 'bad' : 'good';
-  // 같은 날 같은 내용은 한 번에: '오늘 14·18·22시 초미세 나쁨 · 마스크'
-  const grp = [];
-  alerts.forEach(a => {
-    const g = grp.find(x => x.day === a.day && x.what === a.what);
-    g ? g.hrs.push(a.hr) : grp.push({ day: a.day, what: a.what, hrs: [a.hr] });
-  });
-  al.textContent = grp.length ? '⚠️ ' + grp.slice(0, 4).map(g => `${g.day} ${g.hrs.join('·')}시 ${g.what}`).join(' / ') : '👍 모레까지 출퇴근 시간 비·강풍·미세먼지 걱정 없음';
+  al.className = lines.length ? 'bad' : 'good';
+  al.innerHTML = lines.length ? lines.map(l => `<div>${l}</div>`).join('') : '👍 모레까지 출퇴근 시간 비·강풍·미세먼지 걱정 없음';
 
   // --- 시간별 ---
   let lastD = '';
