@@ -34,7 +34,16 @@ header h1{font-size:18px}
 .sec h2{font-size:15px;margin-bottom:10px}
 .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .row input{width:70px;font-size:16px;padding:7px;background:#f7f7f7;color:#222;border:1px solid #ccc;border-radius:8px;text-align:center}
-.rangeBox{border:1px solid #e0e0e0;border-radius:10px;padding:10px;margin-top:10px}
+.rangeBox{border:2px solid #e8a06a;border-radius:12px;margin-top:16px;overflow:hidden;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.08)}
+.rangeBox.editing{border-color:#d35400}
+.rangeHd{display:flex;align-items:center;gap:10px;padding:8px 10px;background:#fff3e8;border-bottom:2px solid #e8a06a;cursor:pointer}
+.rangeBox.editing .rangeHd{background:#ffe2c8;border-bottom-color:#d35400}
+.rangeHd .tmp{font-size:20px;font-weight:800;color:#d35400}
+.rangeHd .cnt{margin-left:auto;color:#888;font-size:13px}
+.rangeHd .ed{color:#d35400;font-size:13px;font-weight:700;white-space:nowrap}
+.rangeEditBox{padding:10px;border-bottom:1px dashed #e8a06a;background:#fffaf5}
+.rangeBody{padding:8px 10px 10px}
+.rangeBody .thumbs{margin-top:0}
 .rangeHead{margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 .rangeHead b{color:#d35400;font-size:16px}
 .rangeEdit{display:flex;align-items:center;gap:4px;color:#d35400;font-weight:700}
@@ -408,6 +417,7 @@ async function addRange() {
   if (data.ranges.some(r => r.min === lo && r.max === hi)) return alert(`${lo} ~ ${hi}℃ 구간은 이미 있습니다`);
   const id = Date.now();
   data.ranges.push({ id, min: lo, max: hi, photos: [] });
+  editRanges.add(id);
   sortRanges();
   await save();
   document.getElementById('newMin').value = '';
@@ -508,47 +518,52 @@ function importFrom(id) {
   openPicker(`${r.min} ~ ${r.max}℃ 로 가져오기`, '넣을 사진을 눌러 고르세요 (원래 구간 사진은 그대로 남습니다)', groups);
 }
 
-// 펼쳐 둔 구간 (처음엔 모두 펼침)
-const openRanges = new Set();
-let openInit = false;
+// 편집 중인 구간 (머리 칸을 누르면 버튼이 나옴)
+const editRanges = new Set();
+const openRanges = new Set();   // (가져오기 후 호환용)
+function toggleEditRange(id) { editRanges.has(id) ? editRanges.delete(id) : editRanges.add(id); renderSettings(); }
 function renderSettings() {
-  if (!openInit) { data.ranges.forEach(r => openRanges.add(r.id)); openInit = true; }
   const list = document.getElementById('rangeList');
   list.innerHTML = '';
   data.ranges.forEach(r => {
+    const ed = editRanges.has(r.id);
     const box = document.createElement('div');
-    box.className = 'rangeBox';
-    const thumb = r.photos.length ? `<img class="rangeThumb" src="${r.photos[0].src}">` : `<div class="rangeThumb"></div>`;
-    box.innerHTML = `<div class="rangeTop">${thumb}
-      <span class="rangeEdit"><input type="number" inputmode="decimal" id="min${r.id}" value="${r.min}"> ~
-      <input type="number" inputmode="decimal" id="max${r.id}" value="${r.max}"> ℃</span>
-      <span class="cnt">${r.photos.length}장</span></div>
-      <div class="rangeBtns">
-        <button class="btn" onclick="editRange(${r.id})">변경</button>
-        <button class="btn del" onclick="delRange(${r.id})">삭제</button>
-        <button class="btn add" onclick="pickPhotos(${r.id})">＋사진</button>
-      </div>
-      <button class="btn imp" onclick="importFrom(${r.id})">📂 다른 구간에서 가져오기</button>`;
-    // 사진 펼쳐보기 / 접기
-    const open = openRanges.has(r.id);
-    const fold = document.createElement('button');
-    fold.className = 'fold';
-    fold.textContent = open ? `▲ 사진 접기 (${r.photos.length}장)` : `▼ 사진 펼쳐보기 (${r.photos.length}장)`;
-    fold.onclick = () => { open ? openRanges.delete(r.id) : openRanges.add(r.id); renderSettings(); };
-    box.appendChild(fold);
-    if (open) {
-      const grid = document.createElement('div');
-      grid.className = 'thumbs';
-      if (!r.photos.length) grid.innerHTML = '<div class="none">사진이 없습니다</div>';
-      r.photos.forEach((p, i) => {
-        const d = document.createElement('div');
-        d.className = 'th';
-        d.innerHTML = `<img src="${p.src}"><b>${i + 1}</b>`;
-        d.onclick = () => openMenu(r.id, i);
-        grid.appendChild(d);
-      });
-      box.appendChild(grid);
+    box.className = 'rangeBox' + (ed ? ' editing' : '');
+    // 머리 칸: 온도·장수 (누르면 편집 버튼 열고 닫기)
+    const hd = document.createElement('div');
+    hd.className = 'rangeHd';
+    hd.innerHTML = `<span class="tmp">${r.min} ~ ${r.max}℃</span><span class="cnt">${r.photos.length}장</span><span class="ed">${ed ? '닫기 ▲' : '✎ 편집 ▼'}</span>`;
+    hd.onclick = () => toggleEditRange(r.id);
+    box.appendChild(hd);
+    // 편집 칸 (편집 중일 때만)
+    if (ed) {
+      const eb = document.createElement('div');
+      eb.className = 'rangeEditBox';
+      eb.innerHTML = `<span class="rangeEdit"><input type="number" inputmode="decimal" id="min${r.id}" value="${r.min}"> ~
+        <input type="number" inputmode="decimal" id="max${r.id}" value="${r.max}"> ℃</span>
+        <div class="rangeBtns">
+          <button class="btn" onclick="editRange(${r.id})">변경</button>
+          <button class="btn del" onclick="delRange(${r.id})">삭제</button>
+          <button class="btn add" onclick="pickPhotos(${r.id})">＋사진</button>
+        </div>
+        <button class="btn imp" onclick="importFrom(${r.id})">📂 다른 구간에서 가져오기</button>`;
+      box.appendChild(eb);
     }
+    // 사진 (항상 보임, 누르면 크게 보기·순서·삭제 메뉴)
+    const body = document.createElement('div');
+    body.className = 'rangeBody';
+    const grid = document.createElement('div');
+    grid.className = 'thumbs';
+    if (!r.photos.length) grid.innerHTML = '<div class="none">사진이 없습니다 · ✎ 편집에서 ＋사진</div>';
+    r.photos.forEach((p, i) => {
+      const d = document.createElement('div');
+      d.className = 'th';
+      d.innerHTML = `<img src="${p.src}"><b>${i + 1}</b>`;
+      d.onclick = () => openMenu(r.id, i);
+      grid.appendChild(d);
+    });
+    body.appendChild(grid);
+    box.appendChild(body);
     list.appendChild(box);
   });
 }
