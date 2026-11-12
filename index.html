@@ -34,6 +34,7 @@ header h1{font-size:18px}
 .sec h2{font-size:15px;margin-bottom:10px}
 .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .row input{width:70px;font-size:16px;padding:7px;background:#f7f7f7;color:#222;border:1px solid #ccc;border-radius:8px;text-align:center}
+.pmBtn{width:32px;height:36px;border:1px solid #2471a3;border-radius:8px;background:#eaf2fb;color:#2471a3;font-size:18px;font-weight:800;padding:0;flex-shrink:0}
 .rangeBox{border:2px solid #e8a06a;border-radius:12px;margin-top:16px;overflow:hidden;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.08)}
 .rangeBox.editing{border-color:#d35400}
 .rangeHd{display:flex;align-items:center;gap:10px;padding:8px 10px;background:#fff3e8;border-bottom:2px solid #e8a06a;cursor:pointer}
@@ -242,8 +243,8 @@ header h1{font-size:18px}
   <div class="sec">
     <h2>온도 구간 추가</h2>
     <div class="row">
-      <input type="number" id="newMin" inputmode="decimal"> ~
-      <input type="number" id="newMax" inputmode="decimal"> ℃
+      <button class="pmBtn" onclick="flipSign('newMin')">±</button><input type="text" id="newMin" inputmode="decimal"> ~
+      <button class="pmBtn" onclick="flipSign('newMax')">±</button><input type="text" id="newMax" inputmode="decimal"> ℃
       <button class="btn" onclick="addRange()">추가</button>
     </div>
     <div id="rangeList"></div>
@@ -424,6 +425,13 @@ async function addRange() {
   document.getElementById('newMax').value = '';
   renderSettings();
 }
+// 휴대폰 숫자 키패드에 '-'가 없어서 ± 버튼으로 영하 입력
+function flipSign(id) {
+  const el = document.getElementById(id);
+  const v = el.value.trim();
+  el.value = v.startsWith('-') ? v.slice(1) : '-' + v;
+  el.focus();
+}
 // 높은 온도 구간이 위로
 function sortRanges() { data.ranges.sort((a, b) => (b.max - a.max) || (b.min - a.min)); }
 function findRange(id) { return data.ranges.find(r => r.id === id); }
@@ -539,8 +547,8 @@ function renderSettings() {
     if (ed) {
       const eb = document.createElement('div');
       eb.className = 'rangeEditBox';
-      eb.innerHTML = `<span class="rangeEdit"><input type="number" inputmode="decimal" id="min${r.id}" value="${r.min}"> ~
-        <input type="number" inputmode="decimal" id="max${r.id}" value="${r.max}"> ℃</span>
+      eb.innerHTML = `<span class="rangeEdit"><button class="pmBtn" onclick="flipSign('min${r.id}')">±</button><input type="text" inputmode="decimal" id="min${r.id}" value="${r.min}"> ~
+        <button class="pmBtn" onclick="flipSign('max${r.id}')">±</button><input type="text" inputmode="decimal" id="max${r.id}" value="${r.max}"> ℃</span>
         <div class="rangeBtns">
           <button class="btn" onclick="editRange(${r.id})">변경</button>
           <button class="btn del" onclick="delRange(${r.id})">삭제</button>
