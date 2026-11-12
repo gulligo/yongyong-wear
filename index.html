@@ -137,6 +137,17 @@ header h1{font-size:18px}
 #hsvg{position:absolute;left:0;pointer-events:none}
 .wxNote{font-size:11px;color:#999;padding:6px 10px 0;line-height:1.5}
 #autoInfo{font-size:13px;color:#6a4cd6;font-weight:700;padding:8px 10px 0}
+/* 미세먼지 */
+#wxNow .dust{margin-top:5px;border-top:1px dashed #ddd;padding-top:5px;display:flex;align-items:center;gap:5px;font-size:12px;color:#555;flex-wrap:wrap}
+#wxNow .dust .pmv{font-size:20px;font-weight:800;color:#222}
+.gbd{color:#fff;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700;white-space:nowrap}
+.r-pm{height:42px}
+.hlab .r-pm{line-height:1.15;flex-direction:column}
+.hcol .r-pm{flex-direction:column}
+.hcol .r-pm b{width:40px;border-radius:6px;color:#fff;font-size:13px;line-height:1.2;padding:1px 0}
+.hcol .r-pm small{font-size:9px;color:#555;white-space:nowrap;letter-spacing:-.5px}
+.pmLg{display:flex;flex-wrap:wrap;gap:3px;padding:6px 10px 0;font-size:10px}
+.pmLg span{color:#fff;border-radius:4px;padding:1px 5px}
 </style>
 </head>
 <body>
@@ -169,10 +180,12 @@ header h1{font-size:18px}
       <div class="r-pop" id="popLab">강수확률</div>
       <div class="r-pcp">강수량</div>
       <div class="r-wd">바람</div>
+      <div class="r-pm">초미세<br>예보</div>
     </div>
     <div class="hscroll" id="hscroll"><div class="hgrid" id="hgrid"></div></div>
   </div>
-  <div class="wxNote">시간을 누르면 그 시간 체감온도로 옷이 바뀝니다 · 보라 = 출퇴근 · 빨강 = 비·눈·강풍</div>
+  <div class="pmLg" id="pmLg"></div>
+  <div class="wxNote">시간을 누르면 그 시간 체감온도로 옷이 바뀝니다 · 보라 = 출퇴근 · 빨강 = 비·눈·강풍·초미세 나쁨 이상<br>초미세 예보 = CAMS 모델 예측을 지금 측정값으로 보정한 값</div>
   <div id="autoInfo"></div>
 </div>
 
@@ -554,7 +567,11 @@ document.getElementById('importFile').addEventListener('change', async e => {
 // ===== 날씨 (기상청 단기예보) =====
 const WX_KEY = '%2BEh8kbFd9hpLu1HNrPktRwJmihJIlWkCQ0YQ3JTiiaQrPCUydm4o8AR71ASjakiseukq%2BjGF0UJufZm89REMeQ%3D%3D';
 // code = 날씨누리 지역 코드, nx·ny = 공개 API 격자 (날씨누리가 안 될 때 사용)
-const PLACES = [{ name: '옥산', code: '4311332000', nx: 67, ny: 107 }, { name: '송정동', code: '4311377000', nx: 68, ny: 107 }];
+const PLACES = [
+  { name: '옥산', code: '4311332000', nx: 67, ny: 107, lat: 36.6758, lon: 127.3915 },
+  { name: '송정동', code: '4311377000', nx: 68, ny: 107, lat: 36.6554, lon: 127.4443 }
+];
+const PM_WARN = 26;               // 초미세먼지 경고 (8단계 '나쁨' 시작)
 // 날씨누리 자료를 받아 주는 Worker 주소
 const NURI = 'https://nuri-test.86400seccc.workers.dev/';
 const COMMUTE = [6, 14, 18, 22];   // 출퇴근 시각
@@ -630,11 +647,67 @@ async function loadNuri(p) {
     out.now = { T1H: n.tmp, FEEL: n.feel, WSD: n.wsd || 0, WDIR: n.wdir, REH: n.reh, PTY: 0, RN1: n.rn1 && n.rn1 !== '-' ? n.rn1 : 0 };
     const a = (n.at || '').match(/(\d{2}):(\d{2})/);
     out.nowAtText = a ? `${+a[1]}:${a[2]}` : '';
+    if (n.dust) out.dust = n.dust;
   }
   return out;
 }
 
+// ===== 초미세먼지 =====
+// 8단계 (미세미세 기준)
+const PM8 = [
+  [8, '최고', '#1565c0'], [15, '좋음', '#29a3e0'], [20, '양호', '#159c8c'], [25, '보통', '#43a047'],
+  [37, '나쁨', '#f39c12'], [50, '상당히나쁨', '#e8590c'], [75, '매우나쁨', '#d32f2f'], [Infinity, '최악', '#212121']
+];
+function pmGrade(v) { const g = PM8.find(x => v <= x[0]); return { name: g[1], color: g[2] }; }
+
+// CAMS 모델 시간별 예보 (Open-Meteo 대기질)
+async function loadPmFc(p) {
+  const r = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${p.lat}&longitude=${p.lon}&hourly=pm2_5,pm10&timezone=Asia%2FSeoul&forecast_days=4`);
+  const j = await r.json();
+  const fc = {};
+  j.hourly.time.forEach((t, i) => {
+    if (j.hourly.pm2_5[i] == null) return;
+    fc[t.replace(/[-T:]/g, '')] = j.hourly.pm2_5[i];      // 키: YYYYMMDDHHMM
+  });
+  return fc;
+}
+
+// 지금 측정값과 모델 차이만큼 보정 (24시간에 걸쳐 보정을 줄임)
+function pmForecast(w) {
+  const fc = w.pmfc;
+  if (!fc) return {};
+  let off = 0, base = null;
+  const d = w.dust;
+  if (d && d.pm25 != null && d.at) {
+    const m = d.at.match(/(\d{1,2})\.(\d{1,2})\.\s*\([^)]*\)\s*(\d{1,2}):/);
+    if (m) {
+      const now = new Date();
+      base = new Date(now.getFullYear(), +m[1] - 1, +m[2], +m[3]);
+      if (base - now > 86400000 * 30) base.setFullYear(base.getFullYear() - 1);
+      const k = ymd8(base) + pad2(base.getHours()) + '00';
+      if (fc[k] != null) off = d.pm25 - fc[k];
+    }
+  }
+  const out = {};
+  Object.keys(fc).forEach(k => {
+    let v = fc[k];
+    if (base && off) {
+      const t = new Date(+k.substr(0, 4), +k.substr(4, 2) - 1, +k.substr(6, 2), +k.substr(8, 2));
+      const hrs = (t - base) / 3600000;
+      if (hrs >= 0) v += off * Math.max(0, 1 - hrs / 24);
+    }
+    out[k] = Math.max(0, Math.round(v));
+  });
+  return out;
+}
+
 async function loadPlace(p) {
+  const [w, fc] = await Promise.all([loadPlaceWx(p), loadPmFc(p).catch(() => null)]);
+  w.pmfc = fc;
+  return w;
+}
+
+async function loadPlaceWx(p) {
   try { return await loadNuri(p); } catch (e) { /* 날씨누리 실패 → 공개 API */ }
   const out = { src: 'api', h: {}, tmx: {}, tmn: {}, popAt: null, now: null, nowAt: null };
   const add = (items, ren) => items.forEach(i => {
@@ -696,7 +769,7 @@ function pcpTx(v) { if (!v || v === '강수없음' || v === '0') return '-'; ret
 async function loadWx(force) {
   if (!force) {
     try {
-      const c = JSON.parse(localStorage.getItem('wearWx2') || 'null');
+      const c = JSON.parse(localStorage.getItem('wearWx3') || 'null');
       if (c) { WX = c.d; renderWx(new Date(c.at), !selKey); }
       if (c && Date.now() - c.at < 5 * 60000) return;
     } catch (e) {}
@@ -704,7 +777,7 @@ async function loadWx(force) {
   document.getElementById('wxAt').textContent = '불러오는 중...';
   try {
     WX = await Promise.all(PLACES.map(loadPlace));
-    try { localStorage.setItem('wearWx2', JSON.stringify({ at: Date.now(), d: WX })); } catch (e) {}
+    try { localStorage.setItem('wearWx3', JSON.stringify({ at: Date.now(), d: WX })); } catch (e) {}
     renderWx(new Date(), !selKey);
   } catch (e) {
     document.getElementById('wxAt').textContent = '날씨를 불러오지 못했습니다';
@@ -752,6 +825,12 @@ function renderWx(at, autoPick) {
     return { lab: ['오늘', '내일', '모레', '글피'][diff] || '', txt: `${dd.getDate()}일(${'일월화수목금토'[dd.getDay()]})` };
   };
   const W = WX[place];
+  const dustHtml = d => {
+    if (!d || d.pm25 == null) return '';
+    const g = pmGrade(d.pm25);
+    return `<div class="dust"><span>초미세</span><span class="pmv">${d.pm25}</span><span class="gbd" style="background:${g.color}">${g.name}</span>${d.pm10 != null ? `<span>미세 ${d.pm10}</span>` : ''}</div>`;
+  };
+  const PMF = WX.map(pmForecast);
   // --- 지금 날씨 (두 곳) ---
   document.getElementById('wxNow').innerHTML = WX.map((w, i) => {
     const n = w.now;
@@ -762,7 +841,7 @@ function renderWx(at, autoPick) {
     return `<div class="pl ${i === place ? 'on' : ''}" onclick="setPlace(${i})">
       <div class="nm">${PLACES[i].name} 지금 (${nowAt})</div>
       <div class="fl">${f.toFixed(1)}°<span>체감</span></div>
-      <div class="tp">기온 ${n.T1H.toFixed(1)}° · 바람 ${n.WDIR === null && !n.WSD ? '-' : (n.WDIR ? n.WDIR + ' ' : '') + n.WSD + 'm/s'}${rain}</div></div>`;
+      <div class="tp">기온 ${n.T1H.toFixed(1)}° · 바람 ${n.WDIR === null && !n.WSD ? '-' : (n.WDIR ? n.WDIR + ' ' : '') + n.WSD + 'm/s'}${rain}</div>${dustHtml(w.dust)}</div>`;
   }).join('');
   document.getElementById('popLab').innerHTML = W.popAt ? `강수확률<small>${+W.popAt.substr(0, 2)}시 발표</small>` : '강수확률';
   const keys = hourList();
@@ -807,7 +886,10 @@ function renderWx(at, autoPick) {
   const badC = {}, alerts = [];
   keys.filter(k => COMMUTE.includes(+k.substr(8, 2))).forEach(k => {
     const around = [-1, 0, 1].map(d => infos[shiftK(k, d)]).filter(Boolean).flat();
-    if (!around.some(isBad)) return;
+    const pms = PMF.map(f => f[k]).filter(v => v != null);
+    const pmMax = pms.length ? Math.max(...pms) : null;
+    const dustBad = pmMax != null && pmMax >= PM_WARN;
+    if (!around.some(isBad) && !dustBad) return;
     badC[k] = true;
     const what = [];
     const pty = around.map(x => x.pty).find(x => x > 0);
@@ -815,11 +897,18 @@ function renderWx(at, autoPick) {
     if (pty) what.push(PTYT[pty]); else if (pop >= POP_WARN) what.push(`비 ${pop}%`);
     const w = Math.max(...around.map(x => x.w));
     if (w >= WIND_WARN) what.push(`바람 ${w}m/s`);
-    alerts.push(`${dayName(k.substr(0, 8)).lab} ${+k.substr(8, 2)}시 ${what.join(', ')}`);
+    if (dustBad) what.push(`초미세 ${pmGrade(pmMax).name} · 마스크`);
+    alerts.push({ day: dayName(k.substr(0, 8)).lab, hr: +k.substr(8, 2), what: what.join(', ') });
   });
   const al = document.getElementById('wxAlert');
   al.className = alerts.length ? 'bad' : 'good';
-  al.textContent = alerts.length ? '⚠️ ' + alerts.slice(0, 3).join(' · ') : '👍 모레까지 출퇴근 시간 비·강풍 없음';
+  // 같은 날 같은 내용은 한 번에: '오늘 14·18·22시 초미세 나쁨 · 마스크'
+  const grp = [];
+  alerts.forEach(a => {
+    const g = grp.find(x => x.day === a.day && x.what === a.what);
+    g ? g.hrs.push(a.hr) : grp.push({ day: a.day, what: a.what, hrs: [a.hr] });
+  });
+  al.textContent = grp.length ? '⚠️ ' + grp.slice(0, 4).map(g => `${g.day} ${g.hrs.join('·')}시 ${g.what}`).join(' / ') : '👍 모레까지 출퇴근 시간 비·강풍·미세먼지 걱정 없음';
 
   // --- 시간별 ---
   let lastD = '';
@@ -831,6 +920,7 @@ function renderWx(at, autoPick) {
     const cm = COMMUTE.includes(hr);
     const cls = [cm ? 'cm' : '', (cm && badC[k]) || isBad(x) ? 'bad' : '', k === selKey ? 'sel' : ''].join(' ');
     const vec = +x.v.VEC;
+    const pmv = PMF[place][k];
     return `<div class="hcol ${cls}" data-k="${k}" onclick="pickHour('${k}')">
       <div class="r-date">${date}</div>
       <div class="r-time">${hr}시</div>
@@ -840,8 +930,12 @@ function renderWx(at, autoPick) {
       <div class="r-pop">${x.pop == null ? '' : x.pop + '%'}</div>
       <div class="r-pcp">${pcpTx(x.v.PCP)}</div>
       <div class="r-wd ${x.w >= WIND_WARN ? 'strong' : ''}">${x.v.WDIR === null ? '<span>-</span>' : `<span>${x.v.WDIR ? x.v.WDIR.replace(/풍$/, '') : isNaN(vec) ? '' : dirTx(vec)}</span><span>${x.w}m/s</span>`}</div>
+      <div class="r-pm">${pmv == null ? '-' : `<b style="background:${pmGrade(pmv).color}">${pmv}</b><small>${pmGrade(pmv).name}</small>`}</div>
     </div>`;
   }).join('');
+
+  document.getElementById('pmLg').innerHTML = PMF[place] && Object.keys(PMF[place]).length
+    ? PM8.map((g, i) => `<span style="background:${g[2]}">${g[1]} ${i ? PM8[i - 1][0] + 1 : 0}${g[0] === Infinity ? '~' : '~' + g[0]}</span>`).join('') : '';
 
   // --- 기온 꺾은선 그래프 ---
   const temps = keys.map(k => infos[k][place].t);
