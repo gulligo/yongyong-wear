@@ -151,6 +151,14 @@ header h1{font-size:18px}
 #wxNow .dust{margin-top:5px;border-top:1px dashed #ddd;padding-top:5px;display:flex;align-items:center;gap:5px;font-size:12px;color:#555;flex-wrap:wrap}
 #wxNow .dust .pmv{font-size:20px;font-weight:800;color:#222}
 #wxNow .dust small{width:100%;font-size:10px;color:#999}
+#wxNow .dust .trend{width:100%;font-size:11px;color:#555}
+.r-pm{height:42px}
+.hlab .r-pm{line-height:1.15;flex-direction:column}
+.hcol .r-pm{flex-direction:column}
+.hcol .r-pm b{width:40px;border-radius:6px;color:#fff;font-size:13px;line-height:1.2;padding:1px 0}
+.hcol .r-pm small{font-size:9px;color:#555;white-space:nowrap;letter-spacing:-.5px}
+.pmLg{display:flex;flex-wrap:wrap;gap:3px;padding:6px 10px 0;font-size:10px}
+.pmLg span{color:#fff;border-radius:4px;padding:1px 5px}
 .gbd{color:#fff;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700;white-space:nowrap}
 #rdr{background:#fff;margin:10px 10px 0;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden}
 #rdrBtn{display:flex;justify-content:space-between;align-items:center;width:100%;border:none;background:#fff;padding:12px 14px;font-size:15px;font-weight:700;color:#2b8de0}
@@ -188,10 +196,12 @@ header h1{font-size:18px}
       <div class="r-pop" id="popLab">강수확률</div>
       <div class="r-pcp">강수량</div>
       <div class="r-wd">바람</div>
+      <div class="r-pm">초미세<br>예보</div>
     </div>
     <div class="hscroll" id="hscroll"><div class="hgrid" id="hgrid"></div></div>
   </div>
-  <div class="wxNote">시간을 누르면 그 시간 체감온도로 옷이 바뀝니다 · 보라 = 출퇴근 · 빨강 = 비·눈·강풍</div>
+  <div class="pmLg" id="pmLg"></div>
+  <div class="wxNote">시간을 누르면 그 시간 체감온도로 옷이 바뀝니다 · 보라 = 출퇴근 · 빨강 = 비·눈·강풍·초미세 나쁨 이상<br><span id="pmNote"></span></div>
   <div id="autoInfo"></div>
 </div>
 
@@ -674,6 +684,12 @@ async function loadNuri(p) {
     out.nowAtText = a ? `${+a[1]}:${a[2]}` : '';
     if (n.dust) out.dust = n.dust;
   }
+  if (j.pm) {
+    out.pmfc = j.pm.fc || {};
+    out.pmhist = j.pm.hist || [];
+    out.pmbias = j.pm.bias;
+    out.pmn = j.pm.n;
+  }
   return out;
 }
 
@@ -796,13 +812,21 @@ function renderWx(at, autoPick) {
   };
   const W = WX[place];
   // 초미세먼지 지금 측정값 (에어코리아 측정소, 매시 갱신) — WHO 기준 8단계
-  const dustHtml = d => {
+  const dustHtml = (d, w) => {
     if (!d || d.pm25 == null) return '';
     const g = pmGrade(d.pm25);
     const st = (d.station || '').replace('측정소', '');
     const hr = (d.at || '').match(/(\d{1,2}):\d{2}/);
-    return `<div class="dust"><span>초미세</span><span class="pmv">${d.pm25}</span><span class="gbd" style="background:${g.color}">${g.name}</span>${d.pm10 != null ? `<span>미세 ${d.pm10}</span>` : ''}<small>${st} 측정소${hr ? ' · ' + +hr[1] + '시 측정' : ''}</small></div>`;
+    return `<div class="dust"><span>초미세</span><span class="pmv">${d.pm25}</span><span class="gbd" style="background:${g.color}">${g.name}</span>${d.pm10 != null ? `<span>미세 ${d.pm10}</span>` : ''}<small>${st} 측정소${hr ? ' · ' + +hr[1] + '시 측정' : ''}</small>${trendHtml(w)}</div>`;
   };
+  // 최근 4시간 측정값 흐름 (Worker가 매시간 모아 둔 값)
+  const trendHtml = w => {
+    const h = (w.pmhist || []).filter(x => x.pm25 != null).slice(-4);
+    if (h.length < 2) return '';
+    const a = h[h.length - 1].pm25 - h[h.length - 2].pm25;
+    return `<span class="trend">${h.map(x => `${+x.k.substr(8, 2)}시 ${x.pm25}`).join(' → ')} ${a > 2 ? '↑' : a < -2 ? '↓' : '→'}</span>`;
+  };
+  const PMF = WX.map(w => w.pmfc || {});
   // --- 지금 날씨 (두 곳) ---
   document.getElementById('wxNow').innerHTML = WX.map((w, i) => {
     const n = w.now;
@@ -813,7 +837,7 @@ function renderWx(at, autoPick) {
     return `<div class="pl ${i === place ? 'on' : ''}" onclick="setPlace(${i})">
       <div class="nm">${PLACES[i].name} 지금 (${nowAt})</div>
       <div class="fl">${f.toFixed(1)}°<span>체감</span></div>
-      <div class="tp">기온 ${n.T1H.toFixed(1)}° · 바람 ${n.WDIR === null && !n.WSD ? '-' : (n.WDIR ? n.WDIR + ' ' : '') + n.WSD + 'm/s'}${rain}</div>${dustHtml(w.dust)}</div>`;
+      <div class="tp">기온 ${n.T1H.toFixed(1)}° · 바람 ${n.WDIR === null && !n.WSD ? '-' : (n.WDIR ? n.WDIR + ' ' : '') + n.WSD + 'm/s'}${rain}</div>${dustHtml(w.dust, w)}</div>`;
   }).join('');
   document.getElementById('popLab').innerHTML = W.popAt ? `강수확률<small>${+W.popAt.substr(0, 2)}시 발표</small>` : '강수확률';
   const keys = hourList();
@@ -855,7 +879,7 @@ function renderWx(at, autoPick) {
   }).join('');
 
   // --- 출퇴근 경고 (두 곳 모두, 앞뒤 1시간) ---
-  const badC = {}, wxA = [];
+  const badC = {}, wxA = [], pmA = [];
   keys.filter(k => COMMUTE.includes(+k.substr(8, 2))).forEach(k => {
     const day = dayName(k.substr(0, 8)).lab, hr = +k.substr(8, 2);
     // 비·눈·강풍
@@ -870,6 +894,18 @@ function renderWx(at, autoPick) {
       if (w >= WIND_WARN) what.push(`바람 ${w}m/s`);
       if (what.length) wxA.push({ day, hr, what: what.join(', ') });
     }
+    // 초미세먼지 예보: 두 곳 중 더 나쁜 쪽, 등급이 다르면 지역 이름
+    const vals = PMF.map(f => f[k]);
+    const okv = vals.filter(v => v != null);
+    if (okv.length) {
+      const mx = Math.max(...okv);
+      if (mx >= PM_WARN) {
+        badC[k] = true;
+        const g = pmGrade(mx).name;
+        const same = vals.filter(v => v != null).every(v => pmGrade(v).name === g);
+        pmA.push({ day, hr, txt: g + (same ? '' : `(${PLACES[vals.indexOf(mx)].name.replace(/동$/, '')})`) });
+      }
+    }
   });
   // 같은 날·같은 내용 묶기: '모레 6·14·18시 비'
   const wxG = [];
@@ -879,9 +915,17 @@ function renderWx(at, autoPick) {
   });
   const lines = [];
   if (wxG.length) lines.push('☂️ ' + wxG.map(g => `${g.day} ${g.hrs.join('·')}시 ${g.what}`).join(' / '));
+  const pmG = [];
+  pmA.forEach(a => {
+    let d = pmG.find(x => x.day === a.day);
+    if (!d) pmG.push(d = { day: a.day, parts: [] });
+    const last = d.parts[d.parts.length - 1];
+    last && last.txt === a.txt ? last.hrs.push(a.hr) : d.parts.push({ txt: a.txt, hrs: [a.hr] });
+  });
+  if (pmG.length) lines.push('😷 ' + pmG.map(d => d.day + ' ' + d.parts.map(p => `${p.hrs.join('·')}시 ${p.txt}`).join(' · ')).join(' / '));
   const al = document.getElementById('wxAlert');
   al.className = lines.length ? 'bad' : 'good';
-  al.innerHTML = lines.length ? lines.map(l => `<div>${l}</div>`).join('') : '👍 모레까지 출퇴근 시간 비·강풍 없음';
+  al.innerHTML = lines.length ? lines.map(l => `<div>${l}</div>`).join('') : '👍 모레까지 출퇴근 시간 비·강풍·미세먼지 걱정 없음';
 
   // --- 시간별 ---
   let lastD = '';
@@ -893,6 +937,7 @@ function renderWx(at, autoPick) {
     const cm = COMMUTE.includes(hr);
     const cls = [cm ? 'cm' : '', (cm && badC[k]) || isBad(x) ? 'bad' : '', k === selKey ? 'sel' : ''].join(' ');
     const vec = +x.v.VEC;
+    const pmv = PMF[place][k];
     return `<div class="hcol ${cls}" data-k="${k}" onclick="pickHour('${k}')">
       <div class="r-date">${date}</div>
       <div class="r-time">${hr}시</div>
@@ -902,8 +947,16 @@ function renderWx(at, autoPick) {
       <div class="r-pop">${x.pop == null ? '' : x.pop + '%'}</div>
       <div class="r-pcp">${pcpTx(x.v.PCP)}</div>
       <div class="r-wd ${x.w >= WIND_WARN ? 'strong' : ''}">${x.v.WDIR === null ? '<span>-</span>' : `<span>${x.v.WDIR ? x.v.WDIR.replace(/풍$/, '') : isNaN(vec) ? '' : dirTx(vec)}</span><span>${x.w}m/s</span>`}</div>
+      <div class="r-pm">${pmv == null ? '-' : `<b style="background:${pmGrade(pmv).color}">${pmv}</b><small>${pmGrade(pmv).name}</small>`}</div>
     </div>`;
   }).join('');
+
+  const hasPm = Object.keys(PMF[place]).length > 0;
+  document.getElementById('pmLg').innerHTML = hasPm
+    ? PM8.map((g, i) => `<span style="background:${g[2]}">${g[1]} ${i ? PM8[i - 1][0] + 1 : 0}${g[0] === Infinity ? '~' : '~' + g[0]}</span>`).join('') : '';
+  document.getElementById('pmNote').textContent = !hasPm ? '' : W.pmn >= 6
+    ? `초미세 예보 = 모델 예측 + 최근 ${W.pmn}시간 측정값으로 보정 (모델이 평균 ${Math.abs(W.pmbias)} ${W.pmbias >= 0 ? '낮게' : '높게'} 예측)`
+    : '초미세 예보 = 모델 예측을 지금 측정값으로 보정 (측정값이 쌓일수록 정확해짐)';
 
   // --- 기온 꺾은선 그래프 ---
   const temps = keys.map(k => infos[k][place].t);
@@ -978,6 +1031,7 @@ function updCurDate() {
 document.getElementById('hscroll').addEventListener('scroll', updCurDate);
 
 // ===== 초미세먼지 등급: WHO 기준 8단계 (미세미세·네이버 WHO와 같은 방식) =====
+const PM_WARN = 26;   // 초미세 경고 (8단계 '나쁨' 시작)
 const PM8 = [
   [8, '최고', '#1565c0'], [15, '좋음', '#29a3e0'], [20, '양호', '#159c8c'], [25, '보통', '#43a047'],
   [37, '나쁨', '#f39c12'], [50, '상당히나쁨', '#e8590c'], [75, '매우나쁨', '#d32f2f'], [Infinity, '최악', '#212121']
