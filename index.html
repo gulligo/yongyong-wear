@@ -102,6 +102,8 @@ header h1{font-size:18px}
 .tabs button.on{background:#2b8de0;color:#fff}
 .wxTime{font-size:12px;color:#999}
 .wxTime b{color:#2b8de0;cursor:pointer;margin-left:6px}
+#wxDot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;margin-right:5px;vertical-align:-1px;cursor:pointer}
+#wxMsg{display:none;font-size:12px;color:#555;background:#fff8e6;border:1px solid #f0d58a;border-radius:8px;padding:6px 9px;margin:4px 0;line-height:1.5}
 #wxAlert{margin:0 10px 8px;font-size:14px;font-weight:700;border-radius:8px;padding:7px 10px}
 #wxAlert.bad{background:#fdecea;color:#c0392b}
 #wxAlert.good{background:#eaf4fd;color:#2b8de0}
@@ -181,8 +183,9 @@ header h1{font-size:18px}
       <button id="tab0" class="on" onclick="setPlace(0)">옥산</button>
       <button id="tab1" onclick="setPlace(1)">송정동</button>
     </div>
-    <div class="wxTime"><span id="wxAt">불러오는 중...</span><b onclick="loadWx(true)">↻</b></div>
+    <div class="wxTime"><i id="wxDot" onclick="dotInfo()"></i><span id="wxAt">불러오는 중...</span><b onclick="loadWx(true)">↻</b></div>
   </div>
+  <div id="wxMsg"></div>
   <div id="wxNow"></div>
   <div id="wxAlert"></div>
   <div class="days" id="days"></div>
@@ -689,6 +692,7 @@ async function loadNuri(p) {
     out.pmhist = j.pm.hist || [];
     out.pmbias = j.pm.bias;
     out.pmn = j.pm.n;
+    out.pmkv = j.pm.kv;
   }
   return out;
 }
@@ -756,7 +760,7 @@ async function loadWx(force) {
   if (!force) {
     try {
       const c = JSON.parse(localStorage.getItem('wearWx3') || 'null');
-      if (c) { WX = c.d; renderWx(new Date(c.at), !selKey); }
+      if (c) { WX = c.d; renderWx(new Date(c.at), !selKey); setDot(); }
       if (c && Date.now() - c.at < 5 * 60000) return;
     } catch (e) {}
   }
@@ -764,10 +768,49 @@ async function loadWx(force) {
   try {
     WX = await Promise.all(PLACES.map(loadPlace));
     try { localStorage.setItem('wearWx3', JSON.stringify({ at: Date.now(), d: WX })); } catch (e) {}
+    wxFail = false;
     renderWx(new Date(), !selKey);
   } catch (e) {
+    wxFail = true;
     document.getElementById('wxAt').textContent = '날씨를 불러오지 못했습니다';
   }
+  setDot();
+}
+
+// 연결 상태 동그라미 🟢🟡🔴
+let wxFail = false, dotMsgs = [];
+function setDot() {
+  const bad = [], warn = [];
+  if (wxFail) bad.push('날씨를 받아오지 못했습니다 (인터넷 연결 확인)');
+  if (WX) {
+    const nowK = new Date();
+    PLACES.forEach((p, i) => {
+      const w = WX[i];
+      if (!w) return;
+      if (w.src !== 'nuri') { warn.push(`${p.name}: 날씨누리 연결 안 됨 → 공개API 사용 중`); return; }
+      if (!w.dust || w.dust.pm25 == null) warn.push(`${p.name}: 초미세 측정값을 못 받음`);
+      if (w.pmkv === false) warn.push(`${p.name}: 측정값 저장(KV) 연결 안 됨`);
+      const h = (w.pmhist || []).filter(x => x.pm25 != null);
+      if (w.pmkv && h.length < 2) warn.push(`${p.name}: 측정값 모으는 중 (지금 ${h.length}시간치)`);
+      const last = h.length && h[h.length - 1].k;
+      if (last) {
+        const t = new Date(+last.substr(0, 4), +last.substr(4, 2) - 1, +last.substr(6, 2), +last.substr(8, 2));
+        const hrs = Math.floor((nowK - t) / 3600000);
+        if (hrs >= 3) warn.push(`${p.name}: 초미세 측정값 ${hrs}시간째 갱신 안 됨`);
+      }
+    });
+  }
+  const dot = document.getElementById('wxDot');
+  dot.style.background = bad.length ? '#e53935' : warn.length ? '#f4b400' : '#2eb84b';
+  dotMsgs = bad.length || warn.length ? [...bad, ...warn] : ['모두 정상 (날씨누리 · 초미세 측정값 · 매시간 수집)'];
+  const m = document.getElementById('wxMsg');
+  if (m && m.style.display === 'block') m.innerHTML = dotMsgs.join('<br>');
+}
+function dotInfo() {
+  const m = document.getElementById('wxMsg');
+  const open = m.style.display !== 'block';
+  m.innerHTML = dotMsgs.join('<br>');
+  m.style.display = open ? 'block' : 'none';
 }
 
 function setPlace(i) {
