@@ -823,12 +823,25 @@ function setPlace(i) {
 function hourList() {
   const now = new Date();
   const cur = ymd8(now) + pad2(now.getHours()) + '00';
+  // 지금 시각 칸이 없으면 실황 값으로 채움 (하늘은 다음 시간 것)
+  WX.forEach(w => {
+    const ok = w.h[cur] && w.h[cur].TMP != null;
+    if (ok && !w.h[cur].fromNow) return;
+    const n = w.now;
+    if (!n || n.T1H == null) return;
+    const nx = w.h[Object.keys(w.h).filter(k => k > cur).sort()[0]] || {};
+    w.h[cur] = { SKY: nx.SKY, PTY: n.PTY > 0 ? n.PTY : nx.PTY, POP: nx.POP, TMP: n.T1H, FEEL: n.FEEL,
+      WSD: n.WSD || 0, WDIR: n.WDIR, REH: n.REH, PCP: n.RN1 ? n.RN1 : '-', fromNow: true };
+  });
+  // 한 곳이라도 자료가 있으면 칸을 보여줌
   return [...new Set(WX.flatMap(w => Object.keys(w.h)))]
-    .filter(k => k >= cur && WX.every(w => w.h[k] && w.h[k].TMP != null))
+    .filter(k => k >= cur && WX.some(w => w.h[k] && w.h[k].TMP != null))
     .sort();
 }
 function info(k) {
-  const vs = WX.map(w => w.h[k]);
+  const ok = v => v && v.TMP != null;
+  const vs0 = WX.map(w => w.h[k]);
+  const vs = vs0.map(v => ok(v) ? v : vs0.find(ok)); // 빈 곳은 다른 곳 값으로
   const mon = +k.substr(4, 2);
   return vs.map(v => {
     const t = +v.TMP, w = +v.WSD || 0, rh = +v.REH;
@@ -980,7 +993,7 @@ function renderWx(at, autoPick) {
     const cm = COMMUTE.includes(hr);
     const cls = [cm ? 'cm' : '', (cm && badC[k]) || isBad(x) ? 'bad' : '', k === selKey ? 'sel' : ''].join(' ');
     const vec = +x.v.VEC;
-    const pmv = PMF[place][k];
+    const pmv = PMF[place][k] != null ? PMF[place][k] : (W.h[k] && W.h[k].fromNow && W.dust ? W.dust.pm25 : null);
     return `<div class="hcol ${cls}" data-k="${k}" onclick="pickHour('${k}')">
       <div class="r-date">${date}</div>
       <div class="r-time">${hr}시</div>
