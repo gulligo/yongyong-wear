@@ -109,6 +109,7 @@ header h1{font-size:18px}
 #wxAlert.good{background:#eaf4fd;color:#2b8de0}
 .days{display:flex;overflow-x:auto;gap:6px;padding:0 10px 10px}
 .dayc{flex:0 0 auto;min-width:118px;border:1px solid #e0e0e0;border-radius:10px;padding:6px 4px;text-align:center}
+.dayc{cursor:pointer}.dayc.on{border:2px solid #2b8de0;background:#f2f8ff;padding:5px 3px}
 .dayc .dn{font-size:14px;font-weight:700}.dayc .dn span{color:#2b8de0;font-size:12px;margin-left:3px}
 .dayc .am{display:flex;justify-content:space-around;font-size:11px;color:#888;margin-top:2px}
 .dayc .ic{display:flex;justify-content:space-around;font-size:24px}
@@ -777,6 +778,37 @@ async function loadWx(force) {
   setDot();
 }
 
+// 시간별 ↔ 일별 연동: 시간별을 밀면 그 날 일별 칸이 같이 따라옴, 일별 칸을 누르면 그 날 시간별로 이동
+let dayOn = '';
+function syncDays(force) {
+  const sc = document.getElementById('hscroll');
+  const cols = [...document.querySelectorAll('#hgrid .hcol')];
+  if (!cols.length) return;
+  const x = sc.scrollLeft + sc.clientWidth * 0.3;
+  const col = cols.find(c => c.offsetLeft + c.offsetWidth > x) || cols[cols.length - 1];
+  const d = col.dataset.k.substr(0, 8);
+  if (d === dayOn && !force) return;
+  dayOn = d;
+  markDay(d);
+}
+function markDay(d) {
+  const box = document.getElementById('days');
+  let card = null;
+  box.querySelectorAll('.dayc').forEach(c => { const on = c.dataset.d === d; c.classList.toggle('on', on); if (on) card = c; });
+  if (card) box.scrollTo({ left: Math.max(0, card.offsetLeft - box.offsetLeft - 10), behavior: 'smooth' });
+}
+function goDay(d) {
+  const col = [...document.querySelectorAll('#hgrid .hcol')].find(c => c.dataset.k.startsWith(d));
+  dayOn = d;
+  markDay(d);
+  if (col) document.getElementById('hscroll').scrollTo({ left: col.offsetLeft, behavior: 'smooth' });
+}
+let syncT = 0;
+document.getElementById('hscroll').addEventListener('scroll', () => {
+  if (syncT) return;
+  syncT = requestAnimationFrame(() => { syncT = 0; syncDays(); });
+}, { passive: true });
+
 // 연결 상태 동그라미 🟢🟡🔴
 let wxFail = false, dotMsgs = [];
 function setDot() {
@@ -930,11 +962,11 @@ function renderWx(at, autoPick) {
     const hi = W.tmx[d] != null ? W.tmx[d] : temps.length ? Math.max(...temps) : null;
     const a = half(true), p = half(false), n = dayName(d);
     const mmHtml = `<div class="mm"><span class="lo">${lo == null ? '-' : Math.round(lo) + '°'}</span><span class="hi">${hi == null ? '-' : Math.round(hi) + '°'}</span></div>`;
-    if (nd && nd.allday) return `<div class="dayc"><div class="dn">${n.txt}<span>${n.lab}</span></div>
+    if (nd && nd.allday) return `<div class="dayc" data-d="${d}" onclick="goDay('${d}')"><div class="dn">${n.txt}<span>${n.lab}</span></div>
       <div class="am"><span>종일</span></div>
       <div class="ic"><span>${a.ic}</span></div>${mmHtml}
       <div class="pp"><span>${a.pop}</span></div></div>`;
-    return `<div class="dayc"><div class="dn">${n.txt}<span>${n.lab}</span></div>
+    return `<div class="dayc" data-d="${d}" onclick="goDay('${d}')"><div class="dn">${n.txt}<span>${n.lab}</span></div>
       <div class="am"><span>오전</span><span>오후</span></div>
       <div class="ic"><span>${a.ic}</span><span>${p.ic}</span></div>
       <div class="mm"><span class="lo">${lo == null ? '-' : Math.round(lo) + '°'}</span><span class="hi">${hi == null ? '-' : Math.round(hi) + '°'}</span></div>
@@ -1020,6 +1052,8 @@ function renderWx(at, autoPick) {
   document.getElementById('pmNote').textContent = !hasPm ? '' : W.pmn >= 6
     ? `초미세 예보 = 모델 예측 + 최근 ${W.pmn}시간 측정값으로 보정 (모델이 평균 ${Math.abs(W.pmbias)} ${W.pmbias >= 0 ? '낮게' : '높게'} 예측)`
     : '초미세 예보 = 모델 예측을 지금 측정값으로 보정 (측정값이 쌓일수록 정확해짐)';
+
+  dayOn = ''; syncDays();
 
   // --- 기온 꺾은선 그래프 ---
   const temps = keys.map(k => infos[k][place].t);
