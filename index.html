@@ -900,7 +900,9 @@ function renderWx(at, autoPick) {
   const infos = {}; keys.forEach(k => infos[k] = info(k));
 
   // --- 날짜별 요약 (오전/오후) ---
-  const dates = [...new Set(Object.keys(W.h).map(k => k.substr(0, 8)))].sort().filter(d => d >= ymd8(now)).slice(0, 3);
+  // 날씨누리 일별 예보가 있으면 그 날짜 전부(최대 11일), 없으면 시간별 자료가 있는 날
+  const dates = ((W.days || []).length ? W.days.map(x => x.date.replace(/-/g, '')) : [...new Set(Object.keys(W.h).map(k => k.substr(0, 8)))])
+    .sort().filter(d => d >= ymd8(now)).slice(0, 11);
   document.getElementById('days').innerHTML = dates.map(d => {
     const hs = Object.keys(W.h).filter(k => k.startsWith(d) && W.h[k].TMP != null);
     // 오전(0~11시)/오후(12~23시): 날씨누리처럼 지난 시간은 빼고,
@@ -927,6 +929,11 @@ function renderWx(at, autoPick) {
     const lo = W.tmn[d] != null ? W.tmn[d] : temps.length ? Math.min(...temps) : null;
     const hi = W.tmx[d] != null ? W.tmx[d] : temps.length ? Math.max(...temps) : null;
     const a = half(true), p = half(false), n = dayName(d);
+    const mmHtml = `<div class="mm"><span class="lo">${lo == null ? '-' : Math.round(lo) + '°'}</span><span class="hi">${hi == null ? '-' : Math.round(hi) + '°'}</span></div>`;
+    if (nd && nd.allday) return `<div class="dayc"><div class="dn">${n.txt}<span>${n.lab}</span></div>
+      <div class="am"><span>종일</span></div>
+      <div class="ic"><span>${a.ic}</span></div>${mmHtml}
+      <div class="pp"><span>${a.pop}</span></div></div>`;
     return `<div class="dayc"><div class="dn">${n.txt}<span>${n.lab}</span></div>
       <div class="am"><span>오전</span><span>오후</span></div>
       <div class="ic"><span>${a.ic}</span><span>${p.ic}</span></div>
