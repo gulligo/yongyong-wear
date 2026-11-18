@@ -126,11 +126,12 @@ header h1{font-size:18px}
 .hcol.bad{background:#fdecea}
 .hcol.sel{outline:3px solid #2b8de0;outline-offset:-3px;border-radius:6px}
 .r-date{height:22px}.r-time{height:24px}.r-ic{height:34px;font-size:22px}.r-gr{height:64px}
-.r-fl{height:24px}.r-rd{height:26px}.r-pop{height:30px}.r-pcp{height:22px}.r-wd{height:30px;line-height:1.1}
+.r-fl{height:24px}.r-rd{height:26px}.r-pop{height:30px}.r-pcp{height:32px}.r-wd{height:30px;line-height:1.1}
 .hcol .r-time{font-weight:700}
 .hcol.cm .r-time{color:#6a4cd6}
 .hcol .r-rd{font-weight:800;color:#6a4cd6;font-size:14px}
 .hcol .r-pop{color:#2b8de0}
+.hcol .r-pcp{flex-direction:column;font-size:12px;line-height:1.15}.hcol .r-pcp .sn{color:#3b7dd8;font-size:11px}
 .hcol .r-wd{font-size:11px;color:#666;flex-direction:column}
 .hcol .r-wd.strong{color:#c0392b;font-weight:800}
 .hlab .r-rd{color:#6a4cd6;font-weight:800}
@@ -755,7 +756,20 @@ function mode(arr) {
   return +Object.keys(c).sort((a, b) => (c[b] - c[a]) || (b - a))[0];
 }
 function dirTx(d) { return ['북', '북동', '동', '남동', '남', '남서', '서', '북서'][Math.round(d / 45) % 8]; }
-function pcpTx(v) { if (!v || v === '강수없음' || v === '0') return '-'; return String(v).replace('mm', ''); }
+// 강수량 칸: 날씨누리는 강수량과 적설을 한 칸에 같이 줌 ('- -', '~1 ~0.5cm') → 비 / ❄눈 두 줄로
+function pcpTx(v) {
+  let s = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+  if (!s || s === '강수없음' || s === '0' || s === '적설없음') return '-';
+  let snow = '';
+  const sm = s.match(/(~?\s*[\d.]+)\s*cm(\s*미만)?/);
+  if (sm) { snow = sm[2] ? `&lt;${sm[1].replace(/[~\s]/g, '')}` : sm[1].replace(/\s/g, ''); s = s.replace(sm[0], ''); }
+  s = s.replace(/적설없음|강수없음/g, '').replace(/-/g, ' ').trim();
+  let rain = '';
+  const rm = s.match(/(~?\s*[\d.]+)\s*(mm)?(\s*미만)?/);
+  if (rm && +rm[1].replace(/[~\s]/g, '') > 0) rain = (rm[3] ? '&lt;' + rm[1].replace(/[~\s]/g, '') : rm[1].replace(/\s/g, '')) + 'mm';
+  if (!rain && !snow) return '-';
+  return (rain || '-') + (snow ? `<span class="sn">❄${snow}cm</span>` : '');
+}
 
 async function loadWx(force) {
   if (!force) {
