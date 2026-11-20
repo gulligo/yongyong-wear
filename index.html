@@ -671,8 +671,17 @@ async function loadNuri(p) {
   const j = await r.json();
   if (!j.ok || !j.hours || !j.hours.length) throw new Error(j.error || 'nuri');
   const out = { src: 'nuri', h: {}, tmx: {}, tmn: {}, popAt: null, now: null, nowAt: null, days: j.days || [] };
+  out.raw = j.hours.slice(0, 4).map(x => `${x.date.slice(8)}일 ${x.time}`).join(', ');
   j.hours.forEach(x => {
-    const k = x.date.replace(/-/g, '') + x.time.replace(':', '');
+    let date = x.date, time = x.time;
+    // 날씨누리는 밤 12시를 '전날 24:00'으로 적음 → 다음 날 00:00
+    if (/^24/.test(time)) {
+      const d = new Date(date + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      date = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      time = '00:00';
+    }
+    const k = date.replace(/-/g, '') + time.replace(':', '');
     out.h[k] = { ...skyFromText(x.sky), TMP: x.tmp, FEEL: x.feel, POP: x.pop, WSD: x.wsd, WDIR: x.wdir, REH: x.reh, PCP: x.pcp };
   });
   out.days.forEach(d => {
@@ -699,8 +708,36 @@ async function loadNuri(p) {
   return out;
 }
 
+// 날씨누리에서 앞으로 6시간 중 빠진 시간이 있으면 공개 API 초단기예보로 채움
+async function fillGap(p, out) {
+  const now = new Date(), miss = [];
+  for (let i = 1; i <= 6; i++) {
+    const d = new Date(now.getTime() + i * 3600000);
+    const k = ymd8(d) + pad2(d.getHours()) + '00';
+    if (!out.h[k] || out.h[k].TMP == null) miss.push(k);
+  }
+  out.gap = miss.map(k => +k.substr(8, 2) + '시');
+  if (!miss.length) return;
+  try {
+    const it = await wxApi('getUltraSrtFcst', baseUltra(), p);
+    const t = {};
+    it.forEach(i => { (t[i.fcstDate + i.fcstTime] = t[i.fcstDate + i.fcstTime] || {})[i.category] = i.fcstValue; });
+    const mon = now.getMonth() + 1;
+    let filled = 0;
+    miss.forEach(k => {
+      const v = t[k];
+      if (!v || v.T1H == null) return;
+      const T = +v.T1H, W = +v.WSD || 0, RH = +v.REH;
+      out.h[k] = { SKY: +v.SKY, PTY: +v.PTY, TMP: T, FEEL: Math.round(feel(T, W, RH, mon)), WSD: W, VEC: +v.VEC, REH: RH,
+        PCP: v.RN1 && v.RN1 !== '강수없음' ? v.RN1 : '-', POP: null, fromApi: true };
+      filled++;
+    });
+    out.gapFilled = filled;
+  } catch (e) { out.gapFilled = 0; }
+}
+
 async function loadPlace(p) {
-  try { return await loadNuri(p); } catch (e) { /* 날씨누리 실패 → 공개 API */ }
+  try { const o = await loadNuri(p); await fillGap(p, o); return o; } catch (e) { /* 날씨누리 실패 → 공개 API */ }
   const out = { src: 'api', h: {}, tmx: {}, tmn: {}, popAt: null, now: null, nowAt: null };
   const add = (items, ren) => items.forEach(i => {
     const k = i.fcstDate + i.fcstTime;
@@ -826,7 +863,7 @@ document.getElementById('hscroll').addEventListener('scroll', () => {
 // 연결 상태 동그라미 🟢🟡🔴
 let wxFail = false, dotMsgs = [];
 function setDot() {
-  const bad = [], warn = [];
+  const bad = [], warn = [], info = [];
   if (wxFail) bad.push('날씨를 받아오지 못했습니다 (인터넷 연결 확인)');
   if (WX) {
     const nowK = new Date();
@@ -834,6 +871,7 @@ function setDot() {
       const w = WX[i];
       if (!w) return;
       if (w.src !== 'nuri') { warn.push(`${p.name}: 날씨누리 연결 안 됨 → 공개API 사용 중`); return; }
+      if (w.gap && w.gap.length) info.push(`${p.name}: 날씨누리에 ${w.gap.join('·')} 없음 → ${w.gapFilled ? '공개API로 채움' : '못 채움'}`);
       if (!w.dust || w.dust.pm25 == null) warn.push(`${p.name}: 초미세 측정값을 못 받음`);
       if (w.pmkv === false) warn.push(`${p.name}: 측정값 저장(KV) 연결 안 됨`);
       const h = (w.pmhist || []).filter(x => x.pm25 != null);
@@ -849,6 +887,8 @@ function setDot() {
   const dot = document.getElementById('wxDot');
   dot.style.background = bad.length ? '#e53935' : warn.length ? '#f4b400' : '#2eb84b';
   dotMsgs = bad.length || warn.length ? [...bad, ...warn] : ['모두 정상 (날씨누리 · 초미세 측정값 · 매시간 수집)'];
+  dotMsgs = dotMsgs.concat(info);
+  if (WX) { const raw = WX.map((w, i) => w && w.raw ? `${PLACES[i].name} ${w.raw}` : '').filter(Boolean); if (raw.length) dotMsgs.push('<small style="color:#999">날씨누리 첫 시간: ' + raw.join(' / ') + '</small>'); }
   const m = document.getElementById('wxMsg');
   if (m && m.style.display === 'block') m.innerHTML = dotMsgs.join('<br>');
 }
